@@ -180,6 +180,8 @@ void viewer_load(ViewerState& vs, const std::string& replay_path) {
                 get_required_number(ev, "conf", context);
                 get_required_string(ev, "status", context);
                 vs.frames[tick].track_updates.push_back(ev);
+            } else if (type == "track_expired") {
+                vs.frames[tick].track_expired.push_back(ev);
             } else if (type == "msg_sent" || type == "msg_delivered" || type == "msg_dropped") {
                 get_required_int(ev, "sender", context);
                 get_required_int(ev, "receiver", context);
@@ -187,6 +189,8 @@ void viewer_load(ViewerState& vs, const std::string& replay_path) {
                 vs.frames[tick].messages.push_back(ev);
             } else if (type == "world_hash") {
                 vs.frames[tick].world_hash = get_required_string(ev, "hash", context);
+            } else if (type == "stats") {
+                vs.frames[tick].stats_snapshot = ev;
             }
         } catch (const std::exception& ex) {
             parse_warnings.push_back(ex.what());
@@ -481,6 +485,14 @@ static void draw_messages(const ViewerState& vs) {
         DrawText(icon, 10, static_cast<int>(sh - 80 - y_offset * 16), 10, col);
         y_offset++;
     }
+
+    for (const auto& expired : frame.track_expired) {
+        int owner = expired.int_or("owner", -1);
+        int target = expired.int_or("target", -1);
+        const char* txt = TextFormat("TRACK EXPIRED %d -> %d", owner, target);
+        DrawText(txt, 10, static_cast<int>(sh - 80 - y_offset * 16), 10, {255, 180, 120, 210});
+        y_offset++;
+    }
 }
 
 static void draw_ui(const ViewerState& vs) {
@@ -519,6 +531,55 @@ static void draw_ui(const ViewerState& vs) {
     const char* state_text = vs.playing ? "PLAYING" : "PAUSED";
     Color state_col = vs.playing ? Color{100, 255, 100, 200} : Color{255, 200, 80, 200};
     DrawText(state_text, 10, static_cast<int>(sh - 30), 12, state_col);
+
+    // Diagnostics (compact, top-left)
+    std::string latest_hash = "-";
+    for (int t = std::min(vs.current_tick, vs.total_ticks - 1); t >= 0; --t) {
+        if (!vs.frames[t].world_hash.empty()) {
+            latest_hash = vs.frames[t].world_hash;
+            break;
+        }
+    }
+
+    int latest_stats_tick = -1;
+    for (int t = std::min(vs.current_tick, vs.total_ticks - 1); t >= 0; --t) {
+        if (vs.frames[t].stats_snapshot.type == JsonValue::OBJECT) {
+            latest_stats_tick = t;
+            break;
+        }
+    }
+
+    int active_tracks = 0;
+    int expired_tracks = 0;
+    int stats_sent = -1;
+    int stats_delivered = -1;
+    int stats_dropped = -1;
+
+    if (latest_stats_tick >= 0) {
+        const auto& stats = vs.frames[latest_stats_tick].stats_snapshot;
+        active_tracks = stats.int_or("tracks_active", 0);
+        expired_tracks = stats.int_or("tracks_expired", 0);
+        stats_sent = stats.int_or("messages_sent", -1);
+        stats_delivered = stats.int_or("messages_delivered", -1);
+        stats_dropped = stats.int_or("messages_dropped", -1);
+    } else if (vs.current_tick >= 0 && vs.current_tick < static_cast<int>(vs.frames.size())) {
+        // Graceful fallback when no stats snapshot is available yet.
+        active_tracks = static_cast<int>(vs.frames[vs.current_tick].track_updates.size());
+        expired_tracks = static_cast<int>(vs.frames[vs.current_tick].track_expired.size());
+    }
+
+    DrawRectangle(10, 28, 260, 58, {25, 25, 30, 200});
+    DrawText(TextFormat("diag hash@<=tick: %s", latest_hash.c_str()), 16, 34, 10, {170, 170, 185, 220});
+    DrawText(TextFormat("tracks active/expired: %d/%d", active_tracks, expired_tracks),
+             16, 47, 10, {170, 170, 185, 220});
+
+    if (latest_stats_tick >= 0) {
+        DrawText(TextFormat("stats@%d msg s/d/x: %d/%d/%d",
+                 latest_stats_tick, stats_sent, stats_delivered, stats_dropped),
+                 16, 60, 10, {170, 170, 185, 220});
+    } else {
+        DrawText("stats: n/a", 16, 60, 10, {120, 120, 130, 200});
+    }
 
     // Legend (top right)
     int lx = static_cast<int>(sw - 170);
