@@ -1,6 +1,7 @@
 #include "test_helpers.h"
 #include "../src/scenario.h"
 #include <cmath>
+#include <cstdio>
 #include <fstream>
 
 static const char* kInvalidScenarioPath = "tests/tmp_invalid_scenario.json";
@@ -33,6 +34,37 @@ static void test_missing_file() {
     try { load_scenario("nonexistent.json"); }
     catch (const std::runtime_error&) { caught = true; }
     CHECK(caught, "error on missing file");
+}
+
+static void test_belief_rate_units_per_second_keys() {
+    const char* path = "scenarios/__tmp_belief_units_test.json";
+    std::ofstream out(path);
+    out << "{\n"
+        << "  \"seed\": 7,\n"
+        << "  \"dt\": 0.5,\n"
+        << "  \"ticks\": 2,\n"
+        << "  \"obstacles\": [],\n"
+        << "  \"entities\": [\n"
+        << "    {\"id\": 0, \"type\": \"drone\", \"pos\": [0, 0], \"vel\": [0, 0]},\n"
+        << "    {\"id\": 1, \"type\": \"ground\", \"pos\": [0, 0], \"vel\": [0, 0]},\n"
+        << "    {\"id\": 2, \"type\": \"target\", \"pos\": [1, 0], \"vel\": [0, 0]}\n"
+        << "  ],\n"
+        << "  \"belief\": {\n"
+        << "    \"fresh_ticks\": 3,\n"
+        << "    \"stale_ticks\": 4,\n"
+        << "    \"uncertainty_growth_per_second\": 1.25,\n"
+        << "    \"confidence_decay_per_second\": 0.75\n"
+        << "  }\n"
+        << "}\n";
+    out.close();
+
+    Scenario s = load_scenario(path);
+    CHECK(std::fabs(s.belief.uncertainty_growth_per_second - 1.25f) < 0.0001f,
+          "loads uncertainty growth per second");
+    CHECK(std::fabs(s.belief.confidence_decay_per_second - 0.75f) < 0.0001f,
+          "loads confidence decay per second");
+
+    std::remove(path);
 }
 
 static std::string write_invalid_scenario(const std::string& body) {
@@ -80,8 +112,8 @@ static void test_invalid_validations() {
     check_invalid_field("channel.loss_probability", "\"channel\": {\"base_latency\": 3, \"per_distance\": 0.0, \"loss\": 1.5}", "channel.loss_probability must be in [0, 1], got 1.5");
     check_invalid_field("belief.fresh_ticks", "\"belief\": {\"fresh_ticks\": -1, \"stale_ticks\": 10, \"uncertainty_growth\": 0.5, \"confidence_decay\": 0.05}", "belief.fresh_ticks must be >= 0, got -1");
     check_invalid_field("belief.stale_ticks", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": -1, \"uncertainty_growth\": 0.5, \"confidence_decay\": 0.05}", "belief.stale_ticks must be >= 0, got -1");
-    check_invalid_field("belief.uncertainty_growth_rate", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": 10, \"uncertainty_growth\": -0.1, \"confidence_decay\": 0.05}", "belief.uncertainty_growth_rate must be >= 0, got -0.1");
-    check_invalid_field("belief.confidence_decay_rate", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": 10, \"uncertainty_growth\": 0.5, \"confidence_decay\": -0.05}", "belief.confidence_decay_rate must be >= 0, got -0.05");
+    check_invalid_field("belief.uncertainty_growth_per_second", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": 10, \"uncertainty_growth\": -0.1, \"confidence_decay\": 0.05}", "belief.uncertainty_growth_per_second must be >= 0, got -0.1");
+    check_invalid_field("belief.confidence_decay_per_second", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": 10, \"uncertainty_growth\": 0.5, \"confidence_decay\": -0.05}", "belief.confidence_decay_per_second must be >= 0, got -0.05");
 }
 
 int main() {
@@ -89,6 +121,7 @@ int main() {
     test_load_default();
     test_load_los_blocked();
     test_missing_file();
+    test_belief_rate_units_per_second_keys();
     test_invalid_validations();
     TEST_REPORT();
 }

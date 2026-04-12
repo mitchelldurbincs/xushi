@@ -87,8 +87,12 @@ Scenario load_scenario(const std::string& path) {
         const auto& b = root["belief"];
         s.belief.fresh_ticks = b.int_or("fresh_ticks", 5);
         s.belief.stale_ticks = b.int_or("stale_ticks", 10);
-        s.belief.uncertainty_growth_rate = static_cast<float>(b.number_or("uncertainty_growth", 0.5));
-        s.belief.confidence_decay_rate = static_cast<float>(b.number_or("confidence_decay", 0.05));
+        s.belief.uncertainty_growth_per_second = static_cast<float>(
+            b.number_or("uncertainty_growth_per_second",
+                        b.number_or("uncertainty_growth", 0.5)));
+        s.belief.confidence_decay_per_second = static_cast<float>(
+            b.number_or("confidence_decay_per_second",
+                        b.number_or("confidence_decay", 0.05)));
     }
 
     validate_non_negative(path, "ticks", s.ticks);
@@ -104,8 +108,8 @@ Scenario load_scenario(const std::string& path) {
     }
     validate_non_negative(path, "belief.fresh_ticks", s.belief.fresh_ticks);
     validate_non_negative(path, "belief.stale_ticks", s.belief.stale_ticks);
-    validate_non_negative(path, "belief.uncertainty_growth_rate", s.belief.uncertainty_growth_rate);
-    validate_non_negative(path, "belief.confidence_decay_rate", s.belief.confidence_decay_rate);
+    validate_non_negative(path, "belief.uncertainty_growth_per_second", s.belief.uncertainty_growth_per_second);
+    validate_non_negative(path, "belief.confidence_decay_per_second", s.belief.confidence_decay_per_second);
 
     return s;
 }
