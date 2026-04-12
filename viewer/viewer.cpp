@@ -434,13 +434,21 @@ static void draw_detections(const ViewerState& vs) {
         Vector2 observer_screen = {0, 0};
         if (det.has("observer")) {
             EntityId observer_id = static_cast<EntityId>(det["observer"].as_int());
-            auto it = vs.entities_by_id.find(observer_id);
-            if (it != vs.entities_by_id.end() && it->second != nullptr) {
-                const ScenarioEntity* observer = it->second;
-                float wx = observer->position.x + observer->velocity.x * dt * (tick + 1);
-                float wy = observer->position.y + observer->velocity.y * dt * (tick + 1);
-                observer_screen = world_to_screen(wx, wy, vs);
+
+            // Use replay position if available, otherwise extrapolate
+            auto pos_it = frame.entity_positions.find(observer_id);
+            if (pos_it != frame.entity_positions.end()) {
+                observer_screen = world_to_screen(pos_it->second.x, pos_it->second.y, vs);
                 draw_los = true;
+            } else {
+                auto it = vs.entities_by_id.find(observer_id);
+                if (it != vs.entities_by_id.end() && it->second != nullptr) {
+                    const ScenarioEntity* observer = it->second;
+                    float wx = observer->position.x + observer->velocity.x * dt * (tick + 1);
+                    float wy = observer->position.y + observer->velocity.y * dt * (tick + 1);
+                    observer_screen = world_to_screen(wx, wy, vs);
+                    draw_los = true;
+                }
             }
         }
 
