@@ -155,7 +155,9 @@ static std::string write_invalid_scenario(const std::string& body) {
         << "  \"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": 10, \"uncertainty_growth\": 0.5, \"confidence_decay\": 0.05},\n"
         << "  \"obstacles\": [],\n"
         << "  \"entities\": [\n"
-        << "    {\"id\": 1, \"type\": \"target\", \"pos\": [0, 0], \"vel\": [0, 0]}\n"
+        << "    {\"id\": 1, \"type\": \"drone\", \"pos\": [0, 0], \"vel\": [0, 0]},\n"
+        << "    {\"id\": 2, \"type\": \"ground\", \"pos\": [5, 5], \"vel\": [0, 0]},\n"
+        << "    {\"id\": 3, \"type\": \"target\", \"pos\": [10, 10], \"vel\": [0, 0]}\n"
         << "  ],\n"
         << body << "\n"
         << "}\n";
@@ -175,9 +177,9 @@ static void check_invalid_field(const std::string& name,
         message = e.what();
     }
 
-    CHECK(caught, name + " throws");
-    CHECK(message.find(path) != std::string::npos, name + " includes path");
-    CHECK(message.find(expected_message_part) != std::string::npos, name + " includes detail");
+    CHECK(caught, (name + " throws").c_str());
+    CHECK(message.find(path) != std::string::npos, (name + " includes path").c_str());
+    CHECK(message.find(expected_message_part) != std::string::npos, (name + " includes detail").c_str());
 }
 
 static void test_invalid_validations() {
@@ -191,7 +193,6 @@ static void test_invalid_validations() {
     check_invalid_field("belief.stale_ticks", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": -1, \"uncertainty_growth\": 0.5, \"confidence_decay\": 0.05}", "belief.stale_ticks must be >= 0, got -1");
     check_invalid_field("belief.uncertainty_growth_per_second", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": 10, \"uncertainty_growth\": -0.1, \"confidence_decay\": 0.05}", "belief.uncertainty_growth_per_second must be >= 0, got -0.1");
     check_invalid_field("belief.confidence_decay_per_second", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": 10, \"uncertainty_growth\": 0.5, \"confidence_decay\": -0.05}", "belief.confidence_decay_per_second must be >= 0, got -0.05");
-}
 }
 
 int main() {

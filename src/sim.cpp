@@ -5,7 +5,7 @@
 #include "belief.h"
 #include "rng.h"
 
-static uint64_t compute_world_hash(const std::vector<ScenarioEntity>& entities,
+uint64_t compute_world_hash(const std::vector<ScenarioEntity>& entities,
                                     const BeliefState& belief) {
     uint64_t h = 14695981039346656037ULL;
     auto mix = [&](const void* data, size_t len) {

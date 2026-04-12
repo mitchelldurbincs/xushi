@@ -5,6 +5,7 @@
 #include "belief.h"
 #include "rng.h"
 #include "scenario.h"
+#include "sim.h"
 #include "replay.h"
 #include "replay_events.h"
 #include "stats.h"
@@ -18,31 +19,6 @@ using Clock = std::chrono::high_resolution_clock;
 
 static double elapsed_us(Clock::time_point start) {
     return std::chrono::duration<double, std::micro>(Clock::now() - start).count();
-}
-
-static uint64_t compute_world_hash(const std::vector<ScenarioEntity>& entities,
-                                    const BeliefState& belief) {
-    uint64_t h = 14695981039346656037ULL;
-    auto mix = [&](const void* data, size_t len) {
-        const auto* bytes = static_cast<const uint8_t*>(data);
-        for (size_t i = 0; i < len; ++i) {
-            h ^= bytes[i];
-            h *= 1099511628211ULL;
-        }
-    };
-    for (const auto& e : entities) {
-        mix(&e.id, sizeof(e.id));
-        mix(&e.position.x, sizeof(float));
-        mix(&e.position.y, sizeof(float));
-    }
-    for (const auto& t : belief.tracks) {
-        mix(&t.target, sizeof(t.target));
-        mix(&t.estimated_position.x, sizeof(float));
-        mix(&t.estimated_position.y, sizeof(float));
-        mix(&t.confidence, sizeof(float));
-        mix(&t.uncertainty, sizeof(float));
-    }
-    return h;
 }
 
 int main(int argc, char* argv[]) {

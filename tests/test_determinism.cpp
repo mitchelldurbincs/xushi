@@ -59,8 +59,11 @@ static void test_benchmark_determinism() {
     SimResult a = run_scenario_headless(scn);
     SimResult b = run_scenario_headless(scn);
 
+    CHECK(a.world_hashes.size() == b.world_hashes.size(), "benchmark hash count matches");
+
     bool all_match = true;
-    for (size_t i = 0; i < a.world_hashes.size(); ++i) {
+    size_t count = std::min(a.world_hashes.size(), b.world_hashes.size());
+    for (size_t i = 0; i < count; ++i) {
         if (a.world_hashes[i] != b.world_hashes[i]) {
             all_match = false;
             break;

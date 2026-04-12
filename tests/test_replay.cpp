@@ -2,7 +2,7 @@
 #include "../src/replay.h"
 #include "../src/replay_events.h"
 #include "../src/scenario.h"
-#include <cstdlib>
+#include <cstdio>
 
 static const char* TEST_FILE = "test_output.replay";
 
