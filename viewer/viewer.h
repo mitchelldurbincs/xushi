@@ -23,6 +23,7 @@ struct ViewerState {
     // Indexed replay data
     std::vector<TickFrame> frames; // one per tick
     int total_ticks = 0;
+    std::map<EntityId, const ScenarioEntity*> entities_by_id;
 
     // Playback
     int current_tick = 0;
@@ -38,6 +39,16 @@ struct ViewerState {
     // UI
     bool dragging_slider = false;
 };
+
+struct WorldBounds {
+    float min_x = 0.0f;
+    float min_y = 0.0f;
+    float max_x = 0.0f;
+    float max_y = 0.0f;
+    bool has_points = false;
+};
+
+WorldBounds compute_world_bounds(const Scenario& scenario);
 
 void viewer_load(ViewerState& vs, const std::string& replay_path);
 void viewer_update(ViewerState& vs);

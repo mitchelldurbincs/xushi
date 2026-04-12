@@ -79,13 +79,13 @@ int main(int argc, char* argv[]) {
     ScenarioEntity* ground = nullptr;
     std::vector<ScenarioEntity*> targets;
     for (auto& e : entities) {
-        if (e.type == "drone")  drone = &e;
-        if (e.type == "ground") ground = &e;
-        if (e.type == "target") targets.push_back(&e);
+        if (e.role == ScenarioEntity::Role::Drone)  drone = &e;
+        if (e.role == ScenarioEntity::Role::Ground) ground = &e;
+        if (e.role == ScenarioEntity::Role::Target) targets.push_back(&e);
     }
 
     if (!drone || !ground || targets.empty()) {
-        std::fprintf(stderr, "error: scenario must have at least one drone, ground, and target\n");
+        std::fprintf(stderr, "error: scenario validation failed before simulation start\n");
         return 1;
     }
 
@@ -176,7 +176,7 @@ int main(int argc, char* argv[]) {
             stats.messages_delivered++;
             ground_belief.update(msg.payload.observation, tick);
         }
-        ground_belief.decay(tick, scn.belief);
+        ground_belief.decay(tick, scn.dt, scn.belief);
         stats.belief_us += elapsed_us(t0);
         check_belief_invariants(ground_belief, "after belief decay");
 

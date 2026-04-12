@@ -1,6 +1,7 @@
 #include "json.h"
 #include <cstdlib>
 #include <cctype>
+#include <cstring>
 
 // --- JsonValue accessors ---
 
