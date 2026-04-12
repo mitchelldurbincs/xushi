@@ -100,6 +100,15 @@ inline JsonValue replay_stats(int tick, const SystemStats& s) {
     });
 }
 
+inline JsonValue replay_entity_position(int tick, EntityId id, Vec2 pos) {
+    return json_object({
+        {"type",   json_string("entity_pos")},
+        {"tick",   json_number(tick)},
+        {"entity", json_number(id)},
+        {"pos",    json_array({json_number(pos.x), json_number(pos.y)})},
+    });
+}
+
 inline JsonValue replay_waypoint_arrival(int tick, EntityId id, int waypoint_index, Vec2 pos) {
     return json_object({
         {"type",     json_string("waypoint_arrival")},

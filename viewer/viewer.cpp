@@ -106,11 +106,16 @@ WorldBounds compute_world_bounds(const Scenario& scenario) {
 
     const float replay_seconds = scenario.dt * static_cast<float>(scenario.ticks);
     for (const auto& ent : scenario.entities) {
-        const float end_x = ent.position.x + ent.velocity.x * replay_seconds;
-        const float end_y = ent.position.y + ent.velocity.y * replay_seconds;
-
         include_point(bounds, ent.position.x, ent.position.y);
-        include_point(bounds, end_x, end_y);
+
+        if (!ent.waypoints.empty()) {
+            for (const auto& wp : ent.waypoints)
+                include_point(bounds, wp.x, wp.y);
+        } else {
+            const float end_x = ent.position.x + ent.velocity.x * replay_seconds;
+            const float end_y = ent.position.y + ent.velocity.y * replay_seconds;
+            include_point(bounds, end_x, end_y);
+        }
     }
 
     return bounds;
@@ -187,6 +192,12 @@ void viewer_load(ViewerState& vs, const std::string& replay_path) {
                 get_required_int(ev, "receiver", context);
                 if (type == "msg_sent") get_required_int(ev, "delivery_tick", context);
                 vs.frames[tick].messages.push_back(ev);
+            } else if (type == "entity_pos") {
+                const auto& pos_arr = get_required_array(ev, "pos", 2, context);
+                EntityId eid = static_cast<EntityId>(get_required_int(ev, "entity", context));
+                Vec2 pos = {static_cast<float>(pos_arr[0].as_number()),
+                            static_cast<float>(pos_arr[1].as_number())};
+                vs.frames[tick].entity_positions[eid] = pos;
             } else if (type == "world_hash") {
                 vs.frames[tick].world_hash = get_required_string(ev, "hash", context);
             } else if (type == "stats") {
@@ -355,9 +366,27 @@ static void draw_entities(const ViewerState& vs) {
     float dt = vs.scenario.dt;
     int tick = vs.current_tick;
 
+    // Get entity positions from replay if available for this tick
+    const std::map<EntityId, Vec2>* tick_positions = nullptr;
+    if (tick >= 0 && tick < static_cast<int>(vs.frames.size()))
+        tick_positions = &vs.frames[tick].entity_positions;
+
     for (const auto& ent : vs.scenario.entities) {
-        float wx = ent.position.x + ent.velocity.x * dt * (tick + 1);
-        float wy = ent.position.y + ent.velocity.y * dt * (tick + 1);
+        float wx, wy;
+        // Use replay position if available, otherwise extrapolate from constant velocity
+        if (tick_positions) {
+            auto it = tick_positions->find(ent.id);
+            if (it != tick_positions->end()) {
+                wx = it->second.x;
+                wy = it->second.y;
+            } else {
+                wx = ent.position.x + ent.velocity.x * dt * (tick + 1);
+                wy = ent.position.y + ent.velocity.y * dt * (tick + 1);
+            }
+        } else {
+            wx = ent.position.x + ent.velocity.x * dt * (tick + 1);
+            wy = ent.position.y + ent.velocity.y * dt * (tick + 1);
+        }
         Vector2 pos = world_to_screen(wx, wy, vs);
 
         float r = std::max(4.0f, 5.0f * vs.zoom / 3.0f);

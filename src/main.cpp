@@ -89,6 +89,8 @@ int main(int argc, char* argv[]) {
         auto t0 = Clock::now();
         for (auto& e : entities) {
             auto event = update_movement(e, scn.dt);
+            if (!e.waypoints.empty())
+                replay.log(replay_entity_position(tick, e.id, e.position));
             if (event.arrived)
                 replay.log(replay_waypoint_arrival(tick, e.id, event.waypoint_index, e.position));
         }

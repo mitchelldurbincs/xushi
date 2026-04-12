@@ -11,6 +11,7 @@ struct TickFrame {
     std::vector<JsonValue> track_updates;
     std::vector<JsonValue> track_expired;
     std::vector<JsonValue> messages; // sent, delivered, dropped
+    std::map<EntityId, Vec2> entity_positions; // from entity_pos events (waypoint entities)
     std::string world_hash;
     JsonValue stats_snapshot; // optional; NUL when unavailable for this tick
 };
