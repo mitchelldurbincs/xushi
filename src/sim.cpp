@@ -43,38 +43,39 @@ SimResult run_scenario_headless(const Scenario& scn) {
 
     std::vector<ScenarioEntity> entities = scn.entities;
 
-    std::vector<ScenarioEntity*> drones;
-    std::vector<ScenarioEntity*> grounds;
-    std::vector<ScenarioEntity*> targets;
+    std::vector<ScenarioEntity*> sensors;
+    std::vector<ScenarioEntity*> trackers;
+    std::vector<ScenarioEntity*> observables;
     for (auto& e : entities) {
-        if (e.role == ScenarioEntity::Role::Drone)  drones.push_back(&e);
-        if (e.role == ScenarioEntity::Role::Ground) grounds.push_back(&e);
-        if (e.role == ScenarioEntity::Role::Target) targets.push_back(&e);
+        if (e.can_sense)     sensors.push_back(&e);
+        if (e.can_track)     trackers.push_back(&e);
+        if (e.is_observable) observables.push_back(&e);
     }
 
-    if (drones.empty() || grounds.empty() || targets.empty())
+    if (sensors.empty() || trackers.empty() || observables.empty())
         return result;
 
     Rng rng(scn.seed);
     CommSystem comms;
     std::map<EntityId, BeliefState> beliefs;
-    for (auto* g : grounds)
-        beliefs[g->id] = BeliefState{};
+    for (auto* t : trackers)
+        beliefs[t->id] = BeliefState{};
 
     for (int tick = 0; tick < scn.ticks; ++tick) {
         // Movement
         for (auto& e : entities)
             update_movement(e, scn.dt);
 
-        // Sensing — each drone senses all targets, broadcasts to all grounds
-        for (auto* drone : drones) {
-            for (auto* tgt : targets) {
+        // Sensing — each sensor observes all observables, broadcasts to all trackers
+        for (auto* sensor : sensors) {
+            for (auto* obs_ent : observables) {
+                if (sensor->id == obs_ent->id) continue;  // skip self-sensing
                 result.stats.sensors_updated++;
                 result.stats.rays_cast++;
 
                 Observation obs{};
-                bool detected = sense(map, drone->position, drone->id,
-                                      tgt->position, tgt->id,
+                bool detected = sense(map, sensor->position, sensor->id,
+                                      obs_ent->position, obs_ent->id,
                                       scn.max_sensor_range, tick, rng, obs);
 
                 if (detected) {
@@ -84,9 +85,9 @@ SimResult run_scenario_headless(const Scenario& scn) {
                     payload.type = MessagePayload::OBSERVATION;
                     payload.observation = obs;
 
-                    for (auto* ground : grounds) {
-                        float dist = (ground->position - drone->position).length();
-                        int dt = comms.send(drone->id, ground->id, payload, tick,
+                    for (auto* tracker : trackers) {
+                        float dist = (tracker->position - sensor->position).length();
+                        int dt = comms.send(sensor->id, tracker->id, payload, tick,
                                             dist, scn.channel, rng);
                         if (dt >= 0)
                             result.stats.messages_sent++;

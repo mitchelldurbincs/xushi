@@ -391,23 +391,33 @@ static void draw_entities(const ViewerState& vs) {
 
         float r = std::max(4.0f, 5.0f * vs.zoom / 3.0f);
 
+        Color fill, outline;
+        bool use_circle = true;
         if (ent.role == ScenarioEntity::Role::Drone) {
-            DrawCircleV(pos, r, {50, 130, 240, 255});
-            DrawCircleLinesV(pos, r, {80, 160, 255, 255});
+            fill = {50, 130, 240, 255};
+            outline = {80, 160, 255, 255};
         } else if (ent.role == ScenarioEntity::Role::Ground) {
-            DrawRectangle(static_cast<int>(pos.x - r), static_cast<int>(pos.y - r),
-                          static_cast<int>(r * 2), static_cast<int>(r * 2),
-                          {50, 180, 100, 255});
+            fill = {50, 180, 100, 255};
+            outline = fill;
+            use_circle = false;
         } else if (ent.role == ScenarioEntity::Role::Target) {
-            DrawCircleV(pos, r, {220, 60, 60, 255});
-            DrawCircleLinesV(pos, r, {255, 100, 100, 255});
+            fill = {220, 60, 60, 255};
+            outline = {255, 100, 100, 255};
+        } else {
+            fill = {180, 100, 220, 255};
+            outline = {210, 140, 255, 255};
+        }
+
+        if (use_circle) {
+            DrawCircleV(pos, r, fill);
+            DrawCircleLinesV(pos, r, outline);
+        } else {
+            DrawRectangle(static_cast<int>(pos.x - r), static_cast<int>(pos.y - r),
+                          static_cast<int>(r * 2), static_cast<int>(r * 2), fill);
         }
 
         // Label
-        const char* role_str = (ent.role == ScenarioEntity::Role::Drone) ? "drone"
-                             : (ent.role == ScenarioEntity::Role::Ground) ? "ground"
-                             : "target";
-        const char* label = TextFormat("%s %u", role_str, ent.id);
+        const char* label = TextFormat("%s %u", ent.role_name.c_str(), ent.id);
         int font_size = 10;
         DrawText(label, static_cast<int>(pos.x - MeasureText(label, font_size) / 2),
                  static_cast<int>(pos.y - r - 14), font_size, {200, 200, 200, 200});

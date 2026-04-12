@@ -88,8 +88,8 @@ static void test_multi_ground_accepted() {
     std::remove(path);
 }
 
-static void test_unknown_role_rejected() {
-    const char* path = "tests/tmp_unknown_role.json";
+static void test_custom_role_accepted() {
+    const char* path = "tests/tmp_custom_role.json";
     write_temp_scenario(path,
         "{"
         "\"seed\":1,"
@@ -97,17 +97,57 @@ static void test_unknown_role_rejected() {
         "\"entities\":["
         "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0]},"
         "{\"id\":1,\"type\":\"ground\",\"pos\":[1,0],\"vel\":[0,0]},"
-        "{\"id\":2,\"type\":\"alien\",\"pos\":[5,5],\"vel\":[0,0]}"
+        "{\"id\":2,\"type\":\"scout\",\"pos\":[5,5],\"vel\":[0,0],"
+        " \"can_sense\":true,\"is_observable\":true}"
+        "]"
+        "}");
+
+    Scenario s = load_scenario(path);
+    CHECK(s.entities[2].role == ScenarioEntity::Role::Custom, "scout is Custom role");
+    CHECK(s.entities[2].role_name == "scout", "scout role_name");
+    CHECK(s.entities[2].can_sense == true, "scout can_sense");
+    CHECK(s.entities[2].is_observable == true, "scout is_observable");
+    CHECK(s.entities[2].can_track == false, "scout !can_track");
+    std::remove(path);
+}
+
+static void test_capability_override() {
+    const char* path = "tests/tmp_cap_override.json";
+    write_temp_scenario(path,
+        "{"
+        "\"seed\":1,"
+        "\"obstacles\":[],"
+        "\"entities\":["
+        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0],\"can_track\":true},"
+        "{\"id\":1,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0]}"
+        "]"
+        "}");
+
+    Scenario s = load_scenario(path);
+    CHECK(s.entities[0].can_sense == true, "drone keeps can_sense");
+    CHECK(s.entities[0].can_track == true, "drone override can_track");
+    std::remove(path);
+}
+
+static void test_missing_capabilities_rejected() {
+    const char* path = "tests/tmp_no_caps.json";
+    write_temp_scenario(path,
+        "{"
+        "\"seed\":1,"
+        "\"obstacles\":[],"
+        "\"entities\":["
+        "{\"id\":0,\"type\":\"blob\",\"pos\":[0,0],\"vel\":[0,0]},"
+        "{\"id\":1,\"type\":\"blob\",\"pos\":[1,0],\"vel\":[0,0]}"
         "]"
         "}");
 
     bool caught = false;
     try {
         load_scenario(path);
-    } catch (const std::runtime_error& e) {
-        caught = std::string(e.what()).find("unknown entity role 'alien'") != std::string::npos;
+    } catch (const std::runtime_error&) {
+        caught = true;
     }
-    CHECK(caught, "unknown role rejected");
+    CHECK(caught, "no capabilities rejected");
     std::remove(path);
 }
 
@@ -200,7 +240,9 @@ int main() {
     test_missing_file();
     test_multi_drone_accepted();
     test_multi_ground_accepted();
-    test_unknown_role_rejected();
+    test_custom_role_accepted();
+    test_capability_override();
+    test_missing_capabilities_rejected();
     test_belief_rate_units_per_second_keys();
     test_invalid_validations();
     TEST_REPORT();

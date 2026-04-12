@@ -32,13 +32,20 @@ void validate_positive(const std::string& path,
 
 } // namespace
 
-static ScenarioEntity::Role parse_entity_role(const std::string& role_str,
-                                              EntityId id) {
-    if (role_str == "drone") return ScenarioEntity::Role::Drone;
-    if (role_str == "ground") return ScenarioEntity::Role::Ground;
-    if (role_str == "target") return ScenarioEntity::Role::Target;
-    throw std::runtime_error("unknown entity role '" + role_str +
-                             "' for entity id " + std::to_string(id));
+static void apply_role_defaults(ScenarioEntity& e, const std::string& role_str) {
+    e.role_name = role_str;
+    if (role_str == "drone") {
+        e.role = ScenarioEntity::Role::Drone;
+        e.can_sense = true;
+    } else if (role_str == "ground") {
+        e.role = ScenarioEntity::Role::Ground;
+        e.can_track = true;
+    } else if (role_str == "target") {
+        e.role = ScenarioEntity::Role::Target;
+        e.is_observable = true;
+    } else {
+        e.role = ScenarioEntity::Role::Custom;
+    }
 }
 
 Scenario load_scenario(const std::string& path) {
@@ -70,20 +77,25 @@ Scenario load_scenario(const std::string& path) {
     }
 
     // Entities
-    int drone_count = 0;
-    int ground_count = 0;
-    int target_count = 0;
+    int sensor_count = 0;
+    int tracker_count = 0;
+    int observable_count = 0;
 
     for (const auto& ent : root["entities"].as_array()) {
         ScenarioEntity e;
         e.id = static_cast<EntityId>(ent["id"].as_number());
-        e.role = parse_entity_role(ent["type"].as_string(), e.id);
+        apply_role_defaults(e, ent["type"].as_string());
         const auto& p = ent["pos"].as_array();
         e.position = {static_cast<float>(p[0].as_number()),
                       static_cast<float>(p[1].as_number())};
         const auto& v = ent["vel"].as_array();
         e.velocity = {static_cast<float>(v[0].as_number()),
                       static_cast<float>(v[1].as_number())};
+
+        // Capability overrides (optional)
+        if (ent.has("can_sense"))     e.can_sense     = ent["can_sense"].as_bool();
+        if (ent.has("can_track"))     e.can_track     = ent["can_track"].as_bool();
+        if (ent.has("is_observable")) e.is_observable = ent["is_observable"].as_bool();
 
         // Waypoints (optional)
         if (ent.has("waypoints")) {
@@ -113,21 +125,19 @@ Scenario load_scenario(const std::string& path) {
             }
         }
 
-        switch (e.role) {
-            case ScenarioEntity::Role::Drone:  ++drone_count; break;
-            case ScenarioEntity::Role::Ground: ++ground_count; break;
-            case ScenarioEntity::Role::Target: ++target_count; break;
-        }
+        if (e.can_sense)     ++sensor_count;
+        if (e.can_track)     ++tracker_count;
+        if (e.is_observable) ++observable_count;
 
         s.entities.push_back(e);
     }
 
-    if (drone_count == 0)
-        throw std::runtime_error("scenario validation failed: missing required role 'drone'");
-    if (ground_count == 0)
-        throw std::runtime_error("scenario validation failed: missing required role 'ground'");
-    if (target_count == 0)
-        throw std::runtime_error("scenario validation failed: missing required role 'target' (expected at least 1)");
+    if (sensor_count == 0)
+        throw std::runtime_error("scenario validation failed: no entity with sensing capability");
+    if (tracker_count == 0)
+        throw std::runtime_error("scenario validation failed: no entity with tracking capability");
+    if (observable_count == 0)
+        throw std::runtime_error("scenario validation failed: no observable entity");
 
     // Channel (optional)
     if (root.has("channel")) {

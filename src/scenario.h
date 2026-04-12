@@ -12,14 +12,21 @@ struct ScenarioEntity {
         Drone,
         Ground,
         Target,
+        Custom,
     };
 
     enum class WaypointMode { Stop, Loop };
 
     EntityId id;
     Role role = Role::Target;
+    std::string role_name = "target";
     Vec2 position;
     Vec2 velocity;
+
+    // Capability flags (drive sim behavior instead of role enum)
+    bool can_sense = false;      // runs sensing pass (observer)
+    bool can_track = false;      // maintains BeliefState (receiver)
+    bool is_observable = false;  // can be sensed by sensors
 
     // Waypoint movement (optional; empty = use constant velocity)
     std::vector<Vec2> waypoints;
