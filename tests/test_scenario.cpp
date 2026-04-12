@@ -1,6 +1,8 @@
 #include "test_helpers.h"
 #include "../src/scenario.h"
 #include <cmath>
+#include <cstdio>
+#include <fstream>
 
 static void test_load_default() {
     Scenario s = load_scenario("scenarios/default.json");
@@ -32,10 +34,42 @@ static void test_missing_file() {
     CHECK(caught, "error on missing file");
 }
 
+static void test_belief_rate_units_per_second_keys() {
+    const char* path = "scenarios/__tmp_belief_units_test.json";
+    std::ofstream out(path);
+    out << "{\n"
+        << "  \"seed\": 7,\n"
+        << "  \"dt\": 0.5,\n"
+        << "  \"ticks\": 2,\n"
+        << "  \"obstacles\": [],\n"
+        << "  \"entities\": [\n"
+        << "    {\"id\": 0, \"type\": \"drone\", \"pos\": [0, 0], \"vel\": [0, 0]},\n"
+        << "    {\"id\": 1, \"type\": \"ground\", \"pos\": [0, 0], \"vel\": [0, 0]},\n"
+        << "    {\"id\": 2, \"type\": \"target\", \"pos\": [1, 0], \"vel\": [0, 0]}\n"
+        << "  ],\n"
+        << "  \"belief\": {\n"
+        << "    \"fresh_ticks\": 3,\n"
+        << "    \"stale_ticks\": 4,\n"
+        << "    \"uncertainty_growth_per_second\": 1.25,\n"
+        << "    \"confidence_decay_per_second\": 0.75\n"
+        << "  }\n"
+        << "}\n";
+    out.close();
+
+    Scenario s = load_scenario(path);
+    CHECK(std::fabs(s.belief.uncertainty_growth_per_second - 1.25f) < 0.0001f,
+          "loads uncertainty growth per second");
+    CHECK(std::fabs(s.belief.confidence_decay_per_second - 0.75f) < 0.0001f,
+          "loads confidence decay per second");
+
+    std::remove(path);
+}
+
 int main() {
     std::printf("Running scenario tests...\n");
     test_load_default();
     test_load_los_blocked();
     test_missing_file();
+    test_belief_rate_units_per_second_keys();
     TEST_REPORT();
 }
