@@ -62,7 +62,7 @@ static void test_delayed_comms_belief_lags() {
         comms.deliver(tick, delivered);
         for (const auto& msg : delivered)
             belief.update(msg.payload.observation, tick);
-        belief.decay(tick, cfg);
+        belief.decay(tick, 1.0f, cfg);
         if (belief.find_track(1) != nullptr)
             no_track_before = false;
     }
@@ -74,7 +74,7 @@ static void test_delayed_comms_belief_lags() {
     CHECK(delivered.size() == 1, "message delivered on tick 5");
     for (const auto& msg : delivered)
         belief.update(msg.payload.observation, 5);
-    belief.decay(5, cfg);
+    belief.decay(5, 1.0f, cfg);
     CHECK(belief.find_track(1) != nullptr, "delayed comms => track appears at delivery tick");
 }
 
@@ -91,12 +91,12 @@ static void test_stale_track_expires_by_tick_n() {
 
     // Track should exist through tick 8
     for (int tick = 1; tick <= 8; ++tick)
-        belief.decay(tick, cfg);
+        belief.decay(tick, 1.0f, cfg);
 
     CHECK(belief.find_track(1) != nullptr, "track alive at tick 8 (fresh=3 + stale=5)");
 
     // Track should expire at tick 9
-    belief.decay(9, cfg);
+    belief.decay(9, 1.0f, cfg);
     CHECK(belief.find_track(1) == nullptr, "stale track expired by tick 9");
 }
 
