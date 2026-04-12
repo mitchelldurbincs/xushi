@@ -3,6 +3,7 @@
 #include "sensing.h"
 #include "comm.h"
 #include "belief.h"
+#include "movement.h"
 #include "rng.h"
 
 uint64_t compute_world_hash(const std::vector<ScenarioEntity>& entities,
@@ -19,6 +20,7 @@ uint64_t compute_world_hash(const std::vector<ScenarioEntity>& entities,
         mix(&e.id, sizeof(e.id));
         mix(&e.position.x, sizeof(float));
         mix(&e.position.y, sizeof(float));
+        mix(&e.current_waypoint, sizeof(e.current_waypoint));
     }
     for (const auto& [owner_id, belief] : beliefs) {
         mix(&owner_id, sizeof(owner_id));
@@ -62,7 +64,7 @@ SimResult run_scenario_headless(const Scenario& scn) {
     for (int tick = 0; tick < scn.ticks; ++tick) {
         // Movement
         for (auto& e : entities)
-            e.position = e.position + e.velocity * scn.dt;
+            update_movement(e, scn.dt);
 
         // Sensing — each drone senses all targets, broadcasts to all grounds
         for (auto* drone : drones) {

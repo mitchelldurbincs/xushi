@@ -85,6 +85,34 @@ Scenario load_scenario(const std::string& path) {
         e.velocity = {static_cast<float>(v[0].as_number()),
                       static_cast<float>(v[1].as_number())};
 
+        // Waypoints (optional)
+        if (ent.has("waypoints")) {
+            const auto& wps = ent["waypoints"].as_array();
+            if (wps.empty())
+                throw std::runtime_error("entity " + std::to_string(e.id) +
+                                         " has waypoints key but empty list");
+            for (const auto& wp : wps) {
+                const auto& coords = wp.as_array();
+                e.waypoints.push_back({
+                    static_cast<float>(coords[0].as_number()),
+                    static_cast<float>(coords[1].as_number())
+                });
+            }
+            e.speed = static_cast<float>(ent["speed"].as_number());
+            validate_positive(path, "entity speed", e.speed);
+
+            if (ent.has("waypoint_mode")) {
+                std::string mode_str = ent["waypoint_mode"].as_string();
+                if (mode_str == "stop")
+                    e.waypoint_mode = ScenarioEntity::WaypointMode::Stop;
+                else if (mode_str == "loop")
+                    e.waypoint_mode = ScenarioEntity::WaypointMode::Loop;
+                else
+                    throw std::runtime_error("unknown waypoint_mode '" + mode_str +
+                                             "' for entity id " + std::to_string(e.id));
+            }
+        }
+
         switch (e.role) {
             case ScenarioEntity::Role::Drone:  ++drone_count; break;
             case ScenarioEntity::Role::Ground: ++ground_count; break;

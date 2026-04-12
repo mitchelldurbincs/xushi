@@ -9,6 +9,7 @@
 #include "replay.h"
 #include "replay_events.h"
 #include "stats.h"
+#include "movement.h"
 #include "invariants.h"
 #include <chrono>
 #include <cstdio>
@@ -86,8 +87,11 @@ int main(int argc, char* argv[]) {
     for (int tick = 0; tick < scn.ticks; ++tick) {
         // Movement
         auto t0 = Clock::now();
-        for (auto& e : entities)
-            e.position = e.position + e.velocity * scn.dt;
+        for (auto& e : entities) {
+            auto event = update_movement(e, scn.dt);
+            if (event.arrived)
+                replay.log(replay_waypoint_arrival(tick, e.id, event.waypoint_index, e.position));
+        }
         stats.movement_us += elapsed_us(t0);
         check_positions_finite(entities, "after movement");
 

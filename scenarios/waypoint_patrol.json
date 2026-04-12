@@ -1,0 +1,15 @@
+{
+  "seed": 42,
+  "dt": 1.0,
+  "ticks": 100,
+  "max_sensor_range": 80.0,
+  "obstacles": [],
+  "entities": [
+    {"id": 0, "type": "drone",  "pos": [50, 50], "vel": [0, 0]},
+    {"id": 1, "type": "ground", "pos": [50, 50], "vel": [0, 0]},
+    {"id": 2, "type": "target", "pos": [20, 20], "vel": [0, 0],
+     "waypoints": [[40, 20], [40, 40], [20, 40], [20, 20]],
+     "speed": 2.0,
+     "waypoint_mode": "loop"}
+  ]
+}

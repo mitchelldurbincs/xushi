@@ -88,6 +88,10 @@ add_executable(test_replay tests/test_replay.cpp)
 target_link_libraries(test_replay xushi_core)
 add_test(NAME replay COMMAND test_replay)
 
+add_executable(test_movement tests/test_movement.cpp)
+target_link_libraries(test_movement xushi_core)
+add_test(NAME movement COMMAND test_movement)
+
 add_executable(test_determinism tests/test_determinism.cpp)
 target_link_libraries(test_determinism xushi_core)
 add_test(NAME determinism COMMAND test_determinism)

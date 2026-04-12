@@ -14,10 +14,18 @@ struct ScenarioEntity {
         Target,
     };
 
+    enum class WaypointMode { Stop, Loop };
+
     EntityId id;
     Role role = Role::Target;
     Vec2 position;
     Vec2 velocity;
+
+    // Waypoint movement (optional; empty = use constant velocity)
+    std::vector<Vec2> waypoints;
+    float speed = 0.0f;
+    WaypointMode waypoint_mode = WaypointMode::Stop;
+    int current_waypoint = 0;  // runtime state: index into waypoints
 };
 
 struct Scenario {
