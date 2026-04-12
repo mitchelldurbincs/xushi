@@ -127,7 +127,7 @@ int main(int argc, char* argv[]) {
                 }
             }
             auto event = update_movement(e, scn.dt, rng);
-            if (!e.waypoints.empty())
+            if (!e.waypoints.empty() || e.speed > 0.0f)
                 replay.log(replay_entity_position(tick, e.id, e.position));
             if (event.arrived)
                 replay.log(replay_waypoint_arrival(tick, e.id, event.waypoint_index, e.position));
