@@ -1,0 +1,17 @@
+{
+  "seed": 99,
+  "dt": 1.0,
+  "ticks": 100,
+  "max_sensor_range": 250.0,
+  "obstacles": [],
+  "entities": [
+    {"id": 0, "type": "sensor_near",  "pos": [10, 50], "vel": [0, 0], "can_sense": true, "can_track": true},
+    {"id": 1, "type": "sensor_far",   "pos": [210, 50], "vel": [0, 0], "can_sense": true, "can_track": true},
+    {"id": 2, "type": "target",       "pos": [20, 50], "vel": [0, 0], "is_observable": true}
+  ],
+  "channel": {
+    "base_latency": 2,
+    "per_distance": 0.05,
+    "loss": 0.0
+  }
+}

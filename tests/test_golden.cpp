@@ -100,11 +100,86 @@ static void test_stale_track_expires_by_tick_n() {
     CHECK(belief.find_track(1) == nullptr, "stale track expired by tick 9");
 }
 
+static void test_distance_comms_latency_calculation() {
+    // Two agents: near (10m from target) and far (200m from target).
+    // Channel: base_latency=2, per_distance=0.05, loss=0.
+    // Near agent self-observes (distance 0 to self for comms), but the
+    // interesting case is cross-agent delivery.
+    // Distance between near sensor (10,50) and far sensor (210,50) = 200m.
+    // Expected latency: base(2) + ceil(200 * 0.05) = 2 + 10 = 12 ticks.
+    Rng rng(99);
+    CommChannel ch = {2, 0.05f, 0.0f};
+    CommSystem comms;
+
+    // Simulate near sensor sending to far sensor
+    float distance = 200.0f;
+    MessagePayload payload;
+    payload.type = MessagePayload::OBSERVATION;
+    payload.observation = {0, 0, 2, {20, 50}, 1.0f, 0.9f};
+
+    int delivery = comms.send(0, 1, payload, 0, distance, ch, rng);
+    CHECK(delivery == 12, "distance comms: 200m delivery at tick 12 (base 2 + ceil(200*0.05)=10)");
+
+    // Simulate near sensor sending to itself (distance 0)
+    int self_delivery = comms.send(0, 0, payload, 0, 0.0f, ch, rng);
+    CHECK(self_delivery == 2, "distance comms: 0m delivery at tick 2 (base only)");
+}
+
+static void test_distance_comms_far_belief_lags_near() {
+    // Near sensor detects target on tick 0.
+    // Near sensor (also tracker) gets immediate self-update.
+    // Far sensor gets message after distance-dependent delay.
+    Map map;
+    Rng rng(99);
+    CommChannel ch = {2, 0.05f, 0.0f};
+    CommSystem comms;
+    BeliefConfig cfg;
+
+    BeliefState near_belief, far_belief;
+
+    // Near sensor detects target
+    Observation obs{};
+    sense(map, {10, 50}, 0, {20, 50}, 2, 250.0f, 0, rng, obs);
+
+    // Near sensor updates own belief immediately
+    near_belief.update(obs, 0);
+    CHECK(near_belief.find_track(2) != nullptr, "distance comms: near has track at tick 0");
+
+    // Send to far sensor (200m away)
+    MessagePayload payload;
+    payload.type = MessagePayload::OBSERVATION;
+    payload.observation = obs;
+    int delivery_tick = comms.send(0, 1, payload, 0, 200.0f, ch, rng);
+
+    // Far sensor should NOT have track before delivery
+    bool no_track_before = true;
+    for (int tick = 0; tick < delivery_tick; ++tick) {
+        std::vector<Message> delivered;
+        comms.deliver(tick, delivered);
+        for (const auto& msg : delivered)
+            far_belief.update(msg.payload.observation, tick);
+        far_belief.decay(tick, 1.0f, cfg);
+        if (far_belief.find_track(2) != nullptr)
+            no_track_before = false;
+    }
+    CHECK(no_track_before, "distance comms: far has no track before delivery");
+
+    // At delivery tick, far sensor gets the track
+    std::vector<Message> delivered;
+    comms.deliver(delivery_tick, delivered);
+    CHECK(delivered.size() == 1, "distance comms: message delivered at expected tick");
+    for (const auto& msg : delivered)
+        far_belief.update(msg.payload.observation, delivery_tick);
+    CHECK(far_belief.find_track(2) != nullptr, "distance comms: far has track at delivery tick");
+}
+
 int main() {
     std::printf("Running golden tests...\n");
     test_los_blocked_no_detection();
     test_clear_los_detection_on_tick_0();
     test_delayed_comms_belief_lags();
     test_stale_track_expires_by_tick_n();
+    test_distance_comms_latency_calculation();
+    test_distance_comms_far_belief_lags_near();
     TEST_REPORT();
 }

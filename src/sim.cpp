@@ -1,5 +1,7 @@
 #include "sim.h"
 #include "sim_engine.h"
+#include "patrol_policy.h"
+#include <memory>
 
 uint64_t compute_world_hash(const std::vector<ScenarioEntity>& entities,
                             const std::map<EntityId, BeliefState>& beliefs) {
@@ -41,8 +43,16 @@ struct HeadlessHooks : TickHooks {
 SimResult run_scenario_headless(const Scenario& scn) {
     SimResult result{};
 
+    std::unique_ptr<Policy> policy;
+    if (scn.policy_config.type == "patrol") {
+        auto pp = std::make_unique<PatrolPolicy>();
+        for (const auto& [eid, wps] : scn.policy_config.patrol_routes)
+            pp->routes[eid] = {wps, 0};
+        policy = std::move(pp);
+    }
+
     SimEngine engine;
-    engine.init(scn);
+    engine.init(scn, policy.get());
 
     bool has_sensors = false, has_trackers = false, has_observables = false;
     for (const auto& e : scn.entities) {

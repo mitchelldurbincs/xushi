@@ -19,6 +19,12 @@ void viewer_update(ViewerState& vs) {
     if (IsKeyPressed(KEY_MINUS) || IsKeyPressed(KEY_KP_SUBTRACT))
         vs.playback_speed = std::max(vs.playback_speed / 2.0f, 0.5f);
 
+    // Overlay toggles
+    if (IsKeyPressed(KEY_R))
+        vs.show_sensor_ranges = !vs.show_sensor_ranges;
+    if (IsKeyPressed(KEY_W))
+        vs.show_waypoint_paths = !vs.show_waypoint_paths;
+
     // Zoom
     float wheel = GetMouseWheelMove();
     if (wheel != 0.0f) {

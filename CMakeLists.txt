@@ -110,3 +110,7 @@ add_executable(test_parity tests/test_parity.cpp)
 target_link_libraries(test_parity xushi_core)
 add_test(NAME parity COMMAND test_parity)
 set_tests_properties(parity PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+add_executable(test_policy tests/test_policy.cpp)
+target_link_libraries(test_policy xushi_core)
+add_test(NAME policy COMMAND test_policy)

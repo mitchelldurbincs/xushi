@@ -1,11 +1,13 @@
 #include "sim_engine.h"
 #include "sim.h"
+#include "patrol_policy.h"
 #include "replay.h"
 #include "replay_events.h"
 #include "invariants.h"
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <string>
 
 using Clock = std::chrono::high_resolution_clock;
@@ -181,8 +183,17 @@ int main(int argc, char* argv[]) {
         replay_path = replay_path.substr(0, dot);
     replay_path += ".replay";
 
+    // Construct policy from scenario config
+    std::unique_ptr<Policy> policy;
+    if (scn.policy_config.type == "patrol") {
+        auto pp = std::make_unique<PatrolPolicy>();
+        for (const auto& [eid, wps] : scn.policy_config.patrol_routes)
+            pp->routes[eid] = {wps, 0};
+        policy = std::move(pp);
+    }
+
     SimEngine engine;
-    engine.init(scn);
+    engine.init(scn, policy.get());
 
     ReplayWriter replay(replay_path);
     replay.log(replay_header(scn, path));

@@ -131,6 +131,89 @@ static void test_arrival_event() {
     CHECK(ev3.waypoint_index == 0, "arrival reports correct index");
 }
 
+static void test_branch_point_pick() {
+    // Entity at waypoint 1 with branch point {1: [2, 3]}.
+    // Verify advance_waypoint picks a successor from the branch set.
+    Rng rng(42);
+    ScenarioEntity e;
+    e.id = 10;
+    e.waypoints = {{0, 0}, {10, 0}, {10, 10}, {0, 10}};
+    e.speed = 5.0f;
+    e.waypoint_mode = ScenarioEntity::WaypointMode::Loop;
+    e.current_waypoint = 1;
+    e.branch_points[1] = {2, 3};
+
+    WaypointEvent event;
+    advance_waypoint(e, event, rng);
+    CHECK(event.arrived, "branch: arrival flagged");
+    CHECK(event.waypoint_index == 1, "branch: arrived at index 1");
+    CHECK(e.current_waypoint == 2 || e.current_waypoint == 3,
+          "branch: picked a valid successor");
+}
+
+static void test_branch_point_determinism() {
+    // Two runs with same seed produce identical waypoint sequences through branches.
+    auto run = [](uint64_t seed) {
+        Rng rng(seed);
+        ScenarioEntity e;
+        e.id = 10;
+        e.position = {0, 0};
+        e.waypoints = {{10, 0}, {10, 10}, {0, 10}, {0, 0}};
+        e.speed = 12.0f;  // fast enough to hit waypoints frequently
+        e.waypoint_mode = ScenarioEntity::WaypointMode::Loop;
+        e.branch_points[1] = {2, 3};  // at wp1, branch to wp2 or wp3
+
+        std::vector<int> sequence;
+        for (int i = 0; i < 100; ++i) {
+            auto event = update_movement(e, 1.0f, rng);
+            if (event.arrived)
+                sequence.push_back(event.waypoint_index);
+        }
+        return sequence;
+    };
+
+    auto a = run(12345);
+    auto b = run(12345);
+    CHECK(!a.empty(), "branch determinism: produced arrivals");
+    CHECK(a.size() == b.size(), "branch determinism: same arrival count");
+    bool all_match = true;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (a[i] != b[i]) { all_match = false; break; }
+    }
+    CHECK(all_match, "branch determinism: identical waypoint sequences");
+
+    // Different seed should (very likely) produce different sequence
+    auto c = run(99999);
+    bool any_differ = false;
+    size_t count = std::min(a.size(), c.size());
+    for (size_t i = 0; i < count; ++i) {
+        if (a[i] != c[i]) { any_differ = true; break; }
+    }
+    CHECK(any_differ || a.size() != c.size(), "branch determinism: different seed diverges");
+}
+
+static void test_branch_point_both_successors_reachable() {
+    // Run many times with different seeds, verify both successors are picked at least once.
+    int picked_2 = 0, picked_3 = 0;
+    for (uint64_t seed = 0; seed < 100; ++seed) {
+        Rng rng(seed);
+        ScenarioEntity e;
+        e.id = 10;
+        e.waypoints = {{0, 0}, {10, 0}, {10, 10}, {0, 10}};
+        e.speed = 5.0f;
+        e.waypoint_mode = ScenarioEntity::WaypointMode::Loop;
+        e.current_waypoint = 1;
+        e.branch_points[1] = {2, 3};
+
+        WaypointEvent event;
+        advance_waypoint(e, event, rng);
+        if (e.current_waypoint == 2) picked_2++;
+        if (e.current_waypoint == 3) picked_3++;
+    }
+    CHECK(picked_2 > 0, "branch reachability: successor 2 picked at least once");
+    CHECK(picked_3 > 0, "branch reachability: successor 3 picked at least once");
+}
+
 int main() {
     std::printf("Running movement tests...\n");
     test_constant_velocity_unchanged();
@@ -140,5 +223,8 @@ int main() {
     test_loop_mode();
     test_overshoot_snap();
     test_arrival_event();
+    test_branch_point_pick();
+    test_branch_point_determinism();
+    test_branch_point_both_successors_reachable();
     TEST_REPORT();
 }

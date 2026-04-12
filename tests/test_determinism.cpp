@@ -179,6 +179,69 @@ static void test_multi_agent_determinism() {
     CHECK(a.final_track_count == b.final_track_count, "multi-agent same final tracks");
 }
 
+static void test_branch_waypoint_determinism() {
+    Scenario scn = load_scenario("scenarios/branch_waypoint.json");
+
+    SimResult a = run_scenario_headless(scn);
+    SimResult b = run_scenario_headless(scn);
+
+    CHECK(!a.world_hashes.empty(), "branch waypoint hashes produced");
+    CHECK(a.world_hashes.size() == b.world_hashes.size(), "branch waypoint hash count");
+
+    bool all_match = true;
+    size_t count = std::min(a.world_hashes.size(), b.world_hashes.size());
+    for (size_t i = 0; i < count; ++i) {
+        if (a.world_hashes[i] != b.world_hashes[i]) {
+            all_match = false;
+            break;
+        }
+    }
+    CHECK(all_match, "branch waypoint deterministic");
+}
+
+static void test_distance_comms_determinism() {
+    Scenario scn = load_scenario("scenarios/distance_comms.json");
+
+    SimResult a = run_scenario_headless(scn);
+    SimResult b = run_scenario_headless(scn);
+
+    CHECK(!a.world_hashes.empty(), "distance comms hashes produced");
+    CHECK(a.world_hashes.size() == b.world_hashes.size(), "distance comms hash count");
+
+    bool all_match = true;
+    size_t count = std::min(a.world_hashes.size(), b.world_hashes.size());
+    for (size_t i = 0; i < count; ++i) {
+        if (a.world_hashes[i] != b.world_hashes[i]) {
+            all_match = false;
+            break;
+        }
+    }
+    CHECK(all_match, "distance comms deterministic");
+    CHECK(a.stats.messages_delivered == b.stats.messages_delivered, "distance comms same deliveries");
+}
+
+static void test_patrol_policy_determinism() {
+    Scenario scn = load_scenario("scenarios/patrol_policy.json");
+
+    SimResult a = run_scenario_headless(scn);
+    SimResult b = run_scenario_headless(scn);
+
+    CHECK(!a.world_hashes.empty(), "patrol policy hashes produced");
+    CHECK(a.world_hashes.size() == b.world_hashes.size(), "patrol policy hash count");
+
+    bool all_match = true;
+    size_t count = std::min(a.world_hashes.size(), b.world_hashes.size());
+    for (size_t i = 0; i < count; ++i) {
+        if (a.world_hashes[i] != b.world_hashes[i]) {
+            all_match = false;
+            break;
+        }
+    }
+    CHECK(all_match, "patrol policy deterministic");
+    CHECK(a.stats.detections_generated == b.stats.detections_generated, "patrol policy same detections");
+    CHECK(a.stats.detections_generated > 0, "patrol policy produces detections");
+}
+
 int main() {
     std::printf("Running determinism tests...\n");
     test_same_seed_same_hashes();
@@ -190,5 +253,8 @@ int main() {
     test_mixed_era_determinism();
     test_task_verify_determinism();
     test_noisy_perception_determinism();
+    test_branch_waypoint_determinism();
+    test_distance_comms_determinism();
+    test_patrol_policy_determinism();
     TEST_REPORT();
 }

@@ -206,5 +206,32 @@ Scenario load_scenario(const std::string& path) {
     validate_non_negative(path, "perception.false_positive_rate", s.perception.false_positive_rate);
     validate_non_negative(path, "perception.class_confusion_rate", s.perception.class_confusion_rate);
 
+    // Policy config (optional)
+    if (root.has("policy")) {
+        const auto& pol = root["policy"];
+        s.policy_config.type = pol["type"].as_string();
+        if (s.policy_config.type == "patrol") {
+            if (!pol.has("routes"))
+                throw std::runtime_error("patrol policy requires 'routes' object");
+            const auto& routes = pol["routes"].as_object();
+            for (const auto& [key, val] : routes) {
+                EntityId eid = static_cast<EntityId>(std::stoi(key));
+                std::vector<Vec2> waypoints;
+                for (const auto& wp : val.as_array()) {
+                    const auto& coords = wp.as_array();
+                    waypoints.push_back({
+                        static_cast<float>(coords[0].as_number()),
+                        static_cast<float>(coords[1].as_number())
+                    });
+                }
+                if (waypoints.empty())
+                    throw std::runtime_error("patrol route for entity " + key + " is empty");
+                s.policy_config.patrol_routes[eid] = waypoints;
+            }
+        } else if (s.policy_config.type != "null" && !s.policy_config.type.empty()) {
+            throw std::runtime_error("unknown policy type '" + s.policy_config.type + "'");
+        }
+    }
+
     return s;
 }

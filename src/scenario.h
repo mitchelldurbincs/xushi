@@ -47,6 +47,14 @@ struct Scenario {
         float class_confusion_rate = 0.0f; // probability of misidentifying target class
     };
     PerceptionConfig perception = {};
+
+    // Policy configuration (optional). Only "patrol" type supported.
+    struct PolicyConfig {
+        std::string type;  // empty = no policy, "patrol" = PatrolPolicy
+        // For patrol: maps entity ID -> list of patrol waypoints
+        std::map<EntityId, std::vector<Vec2>> patrol_routes;
+    };
+    PolicyConfig policy_config = {};
 };
 
 // Load a scenario from a JSON file. Throws std::runtime_error on failure.

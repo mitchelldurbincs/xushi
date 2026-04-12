@@ -39,6 +39,10 @@ struct ViewerState {
 
     // UI
     bool dragging_slider = false;
+
+    // Overlay toggles
+    bool show_sensor_ranges = true;
+    bool show_waypoint_paths = true;
 };
 
 struct WorldBounds {

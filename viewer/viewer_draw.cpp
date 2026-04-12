@@ -74,6 +74,100 @@ static void draw_obstacles(const ViewerState& vs) {
     }
 }
 
+// --- Sensor range circles ---
+
+static void draw_sensor_ranges(const ViewerState& vs) {
+    int tick = vs.current_tick;
+    const std::map<EntityId, Vec2>* tick_positions = nullptr;
+    if (tick >= 0 && tick < static_cast<int>(vs.frames.size()))
+        tick_positions = &vs.frames[tick].entity_positions;
+
+    float range = vs.scenario.max_sensor_range;
+
+    for (const auto& ent : vs.scenario.entities) {
+        if (!ent.can_sense) continue;
+
+        float wx, wy;
+        if (tick_positions) {
+            auto it = tick_positions->find(ent.id);
+            if (it != tick_positions->end()) {
+                wx = it->second.x;
+                wy = it->second.y;
+            } else {
+                wx = ent.position.x + ent.velocity.x * vs.scenario.dt * (tick + 1);
+                wy = ent.position.y + ent.velocity.y * vs.scenario.dt * (tick + 1);
+            }
+        } else {
+            wx = ent.position.x + ent.velocity.x * vs.scenario.dt * (tick + 1);
+            wy = ent.position.y + ent.velocity.y * vs.scenario.dt * (tick + 1);
+        }
+
+        Vector2 pos = world_to_screen(wx, wy, vs);
+        float screen_range = range * vs.zoom;
+
+        DrawCircleV(pos, screen_range, {50, 130, 240, 20});
+        DrawCircleLinesV(pos, screen_range, {50, 130, 240, 60});
+    }
+}
+
+// --- Waypoint paths ---
+
+static void draw_waypoint_paths(const ViewerState& vs) {
+    for (const auto& ent : vs.scenario.entities) {
+        if (ent.waypoints.empty()) continue;
+
+        int n = static_cast<int>(ent.waypoints.size());
+
+        // Choose color based on entity type
+        Color path_color;
+        if (ent.is_observable)
+            path_color = {220, 60, 60, 80};
+        else if (ent.can_sense)
+            path_color = {50, 130, 240, 80};
+        else
+            path_color = {150, 150, 150, 80};
+
+        Color dot_color = {path_color.r, path_color.g, path_color.b, 140};
+
+        // Draw path segments
+        for (int i = 0; i < n; ++i) {
+            Vector2 from = world_to_screen(ent.waypoints[i].x, ent.waypoints[i].y, vs);
+
+            // Draw waypoint dot
+            DrawCircleV(from, 3.0f, dot_color);
+
+            // Check for branch point
+            auto bp_it = ent.branch_points.find(i);
+            if (bp_it != ent.branch_points.end() && !bp_it->second.empty()) {
+                // Draw lines to all branch successors
+                for (int succ : bp_it->second) {
+                    if (succ >= 0 && succ < n) {
+                        Vector2 to = world_to_screen(ent.waypoints[succ].x, ent.waypoints[succ].y, vs);
+                        DrawLineEx(from, to, 1.0f, path_color);
+                    }
+                }
+                // Draw a small diamond to mark the branch point
+                DrawCircleLinesV(from, 5.0f, {255, 200, 80, 120});
+            } else {
+                // Normal sequential segment
+                int next = i + 1;
+                if (next < n) {
+                    Vector2 to = world_to_screen(ent.waypoints[next].x, ent.waypoints[next].y, vs);
+                    DrawLineEx(from, to, 1.0f, path_color);
+                } else if (ent.waypoint_mode == ScenarioEntity::WaypointMode::Loop) {
+                    // Closing segment back to waypoint 0
+                    Vector2 to = world_to_screen(ent.waypoints[0].x, ent.waypoints[0].y, vs);
+                    DrawLineEx(from, to, 1.0f, {path_color.r, path_color.g, path_color.b, 50});
+                }
+            }
+        }
+
+        // Label first waypoint with index
+        Vector2 wp0 = world_to_screen(ent.waypoints[0].x, ent.waypoints[0].y, vs);
+        DrawText("wp0", static_cast<int>(wp0.x + 5), static_cast<int>(wp0.y - 10), 8, dot_color);
+    }
+}
+
 // --- Entities ---
 
 static void draw_entities(const ViewerState& vs) {
@@ -352,9 +446,9 @@ static void draw_ui(const ViewerState& vs) {
     }
 
     // Legend (top right)
-    int lx = static_cast<int>(sw - 170);
+    int lx = static_cast<int>(sw - 190);
     int ly = 10;
-    DrawRectangle(lx - 5, ly - 5, 170, 90, {25, 25, 30, 200});
+    DrawRectangle(lx - 5, ly - 5, 190, 120, {25, 25, 30, 200});
     DrawCircle(lx + 6, ly + 8, 5, {50, 130, 240, 255});
     DrawText("Drone", lx + 16, ly + 2, 12, {180, 180, 190, 200});
     DrawRectangle(lx + 1, ly + 21, 10, 10, {50, 180, 100, 255});
@@ -366,9 +460,18 @@ static void draw_ui(const ViewerState& vs) {
     DrawLineEx({static_cast<float>(lx), static_cast<float>(ly + 70)},
                {static_cast<float>(lx + 12), static_cast<float>(ly + 70)}, 1.5f, {80, 220, 80, 140});
     DrawText("LOS / detection", lx + 16, ly + 64, 12, {180, 180, 190, 200});
+    DrawCircleLinesV({static_cast<float>(lx + 6), static_cast<float>(ly + 86)}, 6, {50, 130, 240, 60});
+    DrawText(vs.show_sensor_ranges ? "Sensor range [R]" : "Sensor range [R] OFF",
+             lx + 16, ly + 80, 12,
+             vs.show_sensor_ranges ? Color{180, 180, 190, 200} : Color{100, 100, 110, 150});
+    DrawLineEx({static_cast<float>(lx), static_cast<float>(ly + 100)},
+               {static_cast<float>(lx + 12), static_cast<float>(ly + 100)}, 1.0f, {220, 60, 60, 80});
+    DrawText(vs.show_waypoint_paths ? "Waypoint path [W]" : "Waypoint path [W] OFF",
+             lx + 16, ly + 94, 12,
+             vs.show_waypoint_paths ? Color{180, 180, 190, 200} : Color{100, 100, 110, 150});
 
     // Controls hint
-    DrawText("SPACE: play/pause  ARROWS: step  +/-: speed  SCROLL: zoom  RIGHT-DRAG: pan",
+    DrawText("SPACE: play/pause  ARROWS: step  +/-: speed  SCROLL: zoom  RIGHT-DRAG: pan  R: ranges  W: waypoints",
              10, 10, 10, {120, 120, 130, 160});
 }
 
@@ -378,6 +481,10 @@ void viewer_draw(const ViewerState& vs) {
     ClearBackground({20, 20, 25, 255});
     draw_grid(vs);
     draw_obstacles(vs);
+    if (vs.show_sensor_ranges)
+        draw_sensor_ranges(vs);
+    if (vs.show_waypoint_paths)
+        draw_waypoint_paths(vs);
     draw_detections(vs);
     draw_tracks(vs);
     draw_entities(vs);
