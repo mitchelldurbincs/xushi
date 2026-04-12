@@ -100,7 +100,7 @@ SimResult run_scenario_headless(const Scenario& scn) {
             result.stats.messages_delivered++;
             ground_belief.update(msg.payload.observation, tick);
         }
-        ground_belief.decay(tick, scn.belief);
+        ground_belief.decay(tick, scn.dt, scn.belief);
 
         result.stats.tracks_active = static_cast<int>(ground_belief.tracks.size());
         for (EntityId id : tracked_before) {

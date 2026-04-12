@@ -2,6 +2,35 @@
 #include "json.h"
 #include <fstream>
 #include <sstream>
+#include <stdexcept>
+
+namespace {
+
+template <typename T>
+void validate_non_negative(const std::string& path,
+                           const char* field_name,
+                           T value) {
+    if (value < static_cast<T>(0)) {
+        std::ostringstream oss;
+        oss << "invalid scenario '" << path << "': " << field_name
+            << " must be >= 0, got " << value;
+        throw std::runtime_error(oss.str());
+    }
+}
+
+template <typename T>
+void validate_positive(const std::string& path,
+                       const char* field_name,
+                       T value) {
+    if (value <= static_cast<T>(0)) {
+        std::ostringstream oss;
+        oss << "invalid scenario '" << path << "': " << field_name
+            << " must be > 0, got " << value;
+        throw std::runtime_error(oss.str());
+    }
+}
+
+} // namespace
 
 static ScenarioEntity::Role parse_entity_role(const std::string& role_str,
                                               EntityId id) {
@@ -89,9 +118,29 @@ Scenario load_scenario(const std::string& path) {
         const auto& b = root["belief"];
         s.belief.fresh_ticks = b.int_or("fresh_ticks", 5);
         s.belief.stale_ticks = b.int_or("stale_ticks", 10);
-        s.belief.uncertainty_growth_rate = static_cast<float>(b.number_or("uncertainty_growth", 0.5));
-        s.belief.confidence_decay_rate = static_cast<float>(b.number_or("confidence_decay", 0.05));
+        s.belief.uncertainty_growth_per_second = static_cast<float>(
+            b.number_or("uncertainty_growth_per_second",
+                        b.number_or("uncertainty_growth", 0.5)));
+        s.belief.confidence_decay_per_second = static_cast<float>(
+            b.number_or("confidence_decay_per_second",
+                        b.number_or("confidence_decay", 0.05)));
     }
+
+    validate_non_negative(path, "ticks", s.ticks);
+    validate_positive(path, "dt", s.dt);
+    validate_positive(path, "max_sensor_range", s.max_sensor_range);
+    validate_non_negative(path, "channel.base_latency_ticks", s.channel.base_latency_ticks);
+    validate_non_negative(path, "channel.latency_per_distance", s.channel.latency_per_distance);
+    if (s.channel.loss_probability < 0.0f || s.channel.loss_probability > 1.0f) {
+        std::ostringstream oss;
+        oss << "invalid scenario '" << path << "': channel.loss_probability"
+            << " must be in [0, 1], got " << s.channel.loss_probability;
+        throw std::runtime_error(oss.str());
+    }
+    validate_non_negative(path, "belief.fresh_ticks", s.belief.fresh_ticks);
+    validate_non_negative(path, "belief.stale_ticks", s.belief.stale_ticks);
+    validate_non_negative(path, "belief.uncertainty_growth_per_second", s.belief.uncertainty_growth_per_second);
+    validate_non_negative(path, "belief.confidence_decay_per_second", s.belief.confidence_decay_per_second);
 
     return s;
 }

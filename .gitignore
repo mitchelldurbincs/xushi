@@ -1,2 +1,4 @@
 build*/
 *.replay
+tests/tmp_invalid_scenario.json
+scenarios/__tmp_belief_units_test.json

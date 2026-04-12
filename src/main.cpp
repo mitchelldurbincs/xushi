@@ -176,7 +176,7 @@ int main(int argc, char* argv[]) {
             stats.messages_delivered++;
             ground_belief.update(msg.payload.observation, tick);
         }
-        ground_belief.decay(tick, scn.belief);
+        ground_belief.decay(tick, scn.dt, scn.belief);
         stats.belief_us += elapsed_us(t0);
         check_belief_invariants(ground_belief, "after belief decay");
 

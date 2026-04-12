@@ -4,6 +4,71 @@
 #include <algorithm>
 #include <cstdio>
 #include <cmath>
+#include <stdexcept>
+#include <vector>
+
+static const char* json_type_name(JsonValue::Type type) {
+    switch (type) {
+        case JsonValue::NUL: return "null";
+        case JsonValue::BOOL: return "bool";
+        case JsonValue::NUMBER: return "number";
+        case JsonValue::STRING: return "string";
+        case JsonValue::ARRAY: return "array";
+        case JsonValue::OBJECT: return "object";
+    }
+    return "unknown";
+}
+
+static const std::string& get_required_string(const JsonValue& obj, const std::string& key, const std::string& context) {
+    if (!obj.has(key))
+        throw std::runtime_error(context + ": missing required key '" + key + "'");
+    const auto& v = obj[key];
+    if (v.type != JsonValue::STRING)
+        throw std::runtime_error(context + ": key '" + key + "' expected string, got " + json_type_name(v.type));
+    return v.as_string();
+}
+
+static int get_required_int(const JsonValue& obj, const std::string& key, const std::string& context) {
+    if (!obj.has(key))
+        throw std::runtime_error(context + ": missing required key '" + key + "'");
+    const auto& v = obj[key];
+    if (v.type != JsonValue::NUMBER)
+        throw std::runtime_error(context + ": key '" + key + "' expected number/int, got " + json_type_name(v.type));
+    return v.as_int();
+}
+
+static double get_required_number(const JsonValue& obj, const std::string& key, const std::string& context) {
+    if (!obj.has(key))
+        throw std::runtime_error(context + ": missing required key '" + key + "'");
+    const auto& v = obj[key];
+    if (v.type != JsonValue::NUMBER)
+        throw std::runtime_error(context + ": key '" + key + "' expected number, got " + json_type_name(v.type));
+    return v.as_number();
+}
+
+static const std::vector<JsonValue>& get_required_array(const JsonValue& obj, const std::string& key, size_t min_len,
+                                                        const std::string& context) {
+    if (!obj.has(key))
+        throw std::runtime_error(context + ": missing required key '" + key + "'");
+    const auto& v = obj[key];
+    if (v.type != JsonValue::ARRAY)
+        throw std::runtime_error(context + ": key '" + key + "' expected array, got " + json_type_name(v.type));
+    const auto& arr = v.as_array();
+    if (arr.size() < min_len)
+        throw std::runtime_error(context + ": key '" + key + "' expected array len >= " + std::to_string(min_len));
+    return arr;
+}
+
+static bool try_get_xy_array(const JsonValue& obj, const std::string& key, float& x, float& y) {
+    if (!obj.has(key)) return false;
+    const auto& v = obj[key];
+    if (v.type != JsonValue::ARRAY) return false;
+    const auto& arr = v.as_array();
+    if (arr.size() < 2 || arr[0].type != JsonValue::NUMBER || arr[1].type != JsonValue::NUMBER) return false;
+    x = static_cast<float>(arr[0].as_number());
+    y = static_cast<float>(arr[1].as_number());
+    return true;
+}
 
 // --- Loading ---
 
@@ -16,33 +81,73 @@ void viewer_load(ViewerState& vs, const std::string& replay_path) {
 
     // Parse header
     const auto& hdr = events[0];
-    if (!hdr.has("scenario"))
-        throw std::runtime_error("replay missing scenario path in header");
+    std::string header_context = "event[0]";
+    if (hdr.type != JsonValue::OBJECT)
+        throw std::runtime_error(header_context + ": expected object, got " + std::string(json_type_name(hdr.type)));
+    if (get_required_string(hdr, "type", header_context) != "header")
+        throw std::runtime_error(header_context + ": expected type == 'header'");
 
-    vs.scenario_path = hdr["scenario"].as_string();
+    vs.scenario_path = get_required_string(hdr, "scenario", header_context);
+    int header_ticks = get_required_int(hdr, "ticks", header_context);
+    double header_dt = get_required_number(hdr, "dt", header_context);
     vs.scenario = load_scenario(vs.scenario_path);
-    vs.total_ticks = vs.scenario.ticks;
+    vs.total_ticks = header_ticks > 0 ? header_ticks : vs.scenario.ticks;
 
     // Pre-allocate frames
     vs.frames.resize(vs.total_ticks);
 
+    std::vector<std::string> parse_warnings;
+    if (vs.scenario.ticks != header_ticks) {
+        parse_warnings.push_back("event[0]: header ticks (" + std::to_string(header_ticks) +
+                                 ") differs from scenario ticks (" + std::to_string(vs.scenario.ticks) + ")");
+    }
+    if (std::fabs(vs.scenario.dt - static_cast<float>(header_dt)) > 1e-6f) {
+        parse_warnings.push_back("event[0]: header dt (" + std::to_string(header_dt) +
+                                 ") differs from scenario dt (" + std::to_string(vs.scenario.dt) + ")");
+    }
+
     // Index events by tick
     for (size_t i = 1; i < events.size(); ++i) {
         const auto& ev = events[i];
-        if (!ev.has("tick")) continue;
-        int tick = ev["tick"].as_int();
-        if (tick < 0 || tick >= vs.total_ticks) continue;
+        std::string context = "event[" + std::to_string(i) + "]";
+        try {
+            if (ev.type != JsonValue::OBJECT)
+                throw std::runtime_error(context + ": expected object, got " + json_type_name(ev.type));
 
-        std::string type = ev["type"].as_string();
+            int tick = get_required_int(ev, "tick", context);
+            if (tick < 0 || tick >= vs.total_ticks) {
+                parse_warnings.push_back(context + ": tick out of range (" + std::to_string(tick) + ")");
+                continue;
+            }
 
-        if (type == "detection") {
-            vs.frames[tick].detections.push_back(ev);
-        } else if (type == "track_update") {
-            vs.frames[tick].track_updates.push_back(ev);
-        } else if (type == "msg_sent" || type == "msg_delivered" || type == "msg_dropped") {
-            vs.frames[tick].messages.push_back(ev);
-        } else if (type == "world_hash") {
-            vs.frames[tick].world_hash = ev["hash"].as_string();
+            const std::string& type = get_required_string(ev, "type", context);
+
+            if (type == "detection") {
+                get_required_array(ev, "est_pos", 2, context);
+                vs.frames[tick].detections.push_back(ev);
+            } else if (type == "track_update") {
+                get_required_array(ev, "pos", 2, context);
+                get_required_number(ev, "unc", context);
+                get_required_number(ev, "conf", context);
+                get_required_string(ev, "status", context);
+                vs.frames[tick].track_updates.push_back(ev);
+            } else if (type == "msg_sent" || type == "msg_delivered" || type == "msg_dropped") {
+                get_required_int(ev, "sender", context);
+                get_required_int(ev, "receiver", context);
+                if (type == "msg_sent") get_required_int(ev, "delivery_tick", context);
+                vs.frames[tick].messages.push_back(ev);
+            } else if (type == "world_hash") {
+                vs.frames[tick].world_hash = get_required_string(ev, "hash", context);
+            }
+        } catch (const std::exception& ex) {
+            parse_warnings.push_back(ex.what());
+        }
+    }
+
+    if (!parse_warnings.empty()) {
+        std::fprintf(stderr, "viewer_load: %zu parse warning(s)\n", parse_warnings.size());
+        for (const auto& warning : parse_warnings) {
+            std::fprintf(stderr, "  - %s\n", warning.c_str());
         }
     }
 
@@ -250,9 +355,8 @@ static void draw_detections(const ViewerState& vs) {
     }
 
     for (const auto& det : frame.detections) {
-        const auto& ep = det["est_pos"].as_array();
-        float ex = static_cast<float>(ep[0].as_number());
-        float ey = static_cast<float>(ep[1].as_number());
+        float ex = 0.0f, ey = 0.0f;
+        if (!try_get_xy_array(det, "est_pos", ex, ey)) continue;
         Vector2 est_screen = world_to_screen(ex, ey, vs);
 
         // LOS line
@@ -270,9 +374,11 @@ static void draw_tracks(const ViewerState& vs) {
     const auto& frame = vs.frames[vs.current_tick];
 
     for (const auto& trk : frame.track_updates) {
-        const auto& p = trk["pos"].as_array();
-        float px = static_cast<float>(p[0].as_number());
-        float py = static_cast<float>(p[1].as_number());
+        float px = 0.0f, py = 0.0f;
+        if (!try_get_xy_array(trk, "pos", px, py)) continue;
+        if (!trk.has("unc") || trk["unc"].type != JsonValue::NUMBER) continue;
+        if (!trk.has("conf") || trk["conf"].type != JsonValue::NUMBER) continue;
+        if (!trk.has("status") || trk["status"].type != JsonValue::STRING) continue;
         float unc = static_cast<float>(trk["unc"].as_number());
         float conf = static_cast<float>(trk["conf"].as_number());
         std::string status = trk["status"].as_string();
@@ -309,6 +415,7 @@ static void draw_messages(const ViewerState& vs) {
 
     int y_offset = 0;
     for (const auto& msg : frame.messages) {
+        if (!msg.has("type") || msg["type"].type != JsonValue::STRING) continue;
         std::string type = msg["type"].as_string();
         Color col;
         const char* icon;
