@@ -21,7 +21,8 @@ static void test_load_default() {
     CHECK(s.obstacles.size() == 1, "obstacle count");
     CHECK(s.obstacles[0].min.x == 45.0f, "obstacle min.x");
     CHECK(s.entities.size() == 3, "entity count");
-    CHECK(s.entities[0].role == ScenarioEntity::Role::Drone, "first entity role");
+    CHECK(s.entities[0].role_name == "drone", "first entity role_name");
+    CHECK(s.entities[0].can_sense == true, "drone can_sense");
     CHECK(s.entities[2].velocity.x == 1.0f, "target velocity");
     CHECK(s.channel.base_latency_ticks == 3, "channel base_latency");
     CHECK(std::fabs(s.channel.loss_probability - 0.1f) < 0.01f, "channel loss");
@@ -49,10 +50,10 @@ static void test_multi_drone_accepted() {
         "\"seed\":1,"
         "\"obstacles\":[],"
         "\"entities\":["
-        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0]},"
-        "{\"id\":1,\"type\":\"drone\",\"pos\":[1,0],\"vel\":[0,0]},"
-        "{\"id\":2,\"type\":\"ground\",\"pos\":[0,1],\"vel\":[0,0]},"
-        "{\"id\":3,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0]}"
+        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0],\"can_sense\":true},"
+        "{\"id\":1,\"type\":\"drone\",\"pos\":[1,0],\"vel\":[0,0],\"can_sense\":true},"
+        "{\"id\":2,\"type\":\"ground\",\"pos\":[0,1],\"vel\":[0,0],\"can_track\":true},"
+        "{\"id\":3,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0],\"is_observable\":true}"
         "]"
         "}");
 
@@ -72,10 +73,10 @@ static void test_multi_ground_accepted() {
         "\"seed\":1,"
         "\"obstacles\":[],"
         "\"entities\":["
-        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0]},"
-        "{\"id\":1,\"type\":\"ground\",\"pos\":[1,0],\"vel\":[0,0]},"
-        "{\"id\":2,\"type\":\"ground\",\"pos\":[0,1],\"vel\":[0,0]},"
-        "{\"id\":3,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0]}"
+        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0],\"can_sense\":true},"
+        "{\"id\":1,\"type\":\"ground\",\"pos\":[1,0],\"vel\":[0,0],\"can_track\":true},"
+        "{\"id\":2,\"type\":\"ground\",\"pos\":[0,1],\"vel\":[0,0],\"can_track\":true},"
+        "{\"id\":3,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0],\"is_observable\":true}"
         "]"
         "}");
 
@@ -95,15 +96,14 @@ static void test_custom_role_accepted() {
         "\"seed\":1,"
         "\"obstacles\":[],"
         "\"entities\":["
-        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0]},"
-        "{\"id\":1,\"type\":\"ground\",\"pos\":[1,0],\"vel\":[0,0]},"
+        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0],\"can_sense\":true},"
+        "{\"id\":1,\"type\":\"ground\",\"pos\":[1,0],\"vel\":[0,0],\"can_track\":true},"
         "{\"id\":2,\"type\":\"scout\",\"pos\":[5,5],\"vel\":[0,0],"
         " \"can_sense\":true,\"is_observable\":true}"
         "]"
         "}");
 
     Scenario s = load_scenario(path);
-    CHECK(s.entities[2].role == ScenarioEntity::Role::Custom, "scout is Custom role");
     CHECK(s.entities[2].role_name == "scout", "scout role_name");
     CHECK(s.entities[2].can_sense == true, "scout can_sense");
     CHECK(s.entities[2].is_observable == true, "scout is_observable");
@@ -118,8 +118,8 @@ static void test_capability_override() {
         "\"seed\":1,"
         "\"obstacles\":[],"
         "\"entities\":["
-        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0],\"can_track\":true},"
-        "{\"id\":1,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0]}"
+        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0],\"can_sense\":true,\"can_track\":true},"
+        "{\"id\":1,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0],\"is_observable\":true}"
         "]"
         "}");
 
@@ -160,9 +160,9 @@ static void test_belief_rate_units_per_second_keys() {
         << "  \"ticks\": 2,\n"
         << "  \"obstacles\": [],\n"
         << "  \"entities\": [\n"
-        << "    {\"id\": 0, \"type\": \"drone\", \"pos\": [0, 0], \"vel\": [0, 0]},\n"
-        << "    {\"id\": 1, \"type\": \"ground\", \"pos\": [0, 0], \"vel\": [0, 0]},\n"
-        << "    {\"id\": 2, \"type\": \"target\", \"pos\": [1, 0], \"vel\": [0, 0]}\n"
+        << "    {\"id\": 0, \"type\": \"drone\", \"pos\": [0, 0], \"vel\": [0, 0], \"can_sense\": true},\n"
+        << "    {\"id\": 1, \"type\": \"ground\", \"pos\": [0, 0], \"vel\": [0, 0], \"can_track\": true},\n"
+        << "    {\"id\": 2, \"type\": \"target\", \"pos\": [1, 0], \"vel\": [0, 0], \"is_observable\": true}\n"
         << "  ],\n"
         << "  \"belief\": {\n"
         << "    \"fresh_ticks\": 3,\n"
@@ -193,9 +193,9 @@ static std::string write_invalid_scenario(const std::string& body) {
         << "  \"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": 10, \"uncertainty_growth\": 0.5, \"confidence_decay\": 0.05},\n"
         << "  \"obstacles\": [],\n"
         << "  \"entities\": [\n"
-        << "    {\"id\": 1, \"type\": \"drone\", \"pos\": [0, 0], \"vel\": [0, 0]},\n"
-        << "    {\"id\": 2, \"type\": \"ground\", \"pos\": [5, 5], \"vel\": [0, 0]},\n"
-        << "    {\"id\": 3, \"type\": \"target\", \"pos\": [10, 10], \"vel\": [0, 0]}\n"
+        << "    {\"id\": 1, \"type\": \"drone\", \"pos\": [0, 0], \"vel\": [0, 0], \"can_sense\": true},\n"
+        << "    {\"id\": 2, \"type\": \"ground\", \"pos\": [5, 5], \"vel\": [0, 0], \"can_track\": true},\n"
+        << "    {\"id\": 3, \"type\": \"target\", \"pos\": [10, 10], \"vel\": [0, 0], \"is_observable\": true}\n"
         << "  ],\n"
         << body << "\n"
         << "}\n";

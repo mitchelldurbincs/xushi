@@ -32,22 +32,6 @@ void validate_positive(const std::string& path,
 
 } // namespace
 
-static void apply_role_defaults(ScenarioEntity& e, const std::string& role_str) {
-    e.role_name = role_str;
-    if (role_str == "drone") {
-        e.role = ScenarioEntity::Role::Drone;
-        e.can_sense = true;
-    } else if (role_str == "ground") {
-        e.role = ScenarioEntity::Role::Ground;
-        e.can_track = true;
-    } else if (role_str == "target") {
-        e.role = ScenarioEntity::Role::Target;
-        e.is_observable = true;
-    } else {
-        e.role = ScenarioEntity::Role::Custom;
-    }
-}
-
 Scenario load_scenario(const std::string& path) {
     std::ifstream file(path);
     if (!file.is_open())
@@ -84,7 +68,7 @@ Scenario load_scenario(const std::string& path) {
     for (const auto& ent : root["entities"].as_array()) {
         ScenarioEntity e;
         e.id = static_cast<EntityId>(ent["id"].as_number());
-        apply_role_defaults(e, ent["type"].as_string());
+        e.role_name = ent["type"].as_string();
         const auto& p = ent["pos"].as_array();
         e.position = {static_cast<float>(p[0].as_number()),
                       static_cast<float>(p[1].as_number())};

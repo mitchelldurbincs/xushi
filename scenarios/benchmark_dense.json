@@ -14,13 +14,13 @@
     {"min": [90, 30], "max": [100, 45]}
   ],
   "entities": [
-    {"id": 0, "type": "drone",  "pos": [50, 0],  "vel": [0, 0]},
-    {"id": 1, "type": "ground", "pos": [50, 80], "vel": [0, 0]},
-    {"id": 2, "type": "target", "pos": [5, 30],  "vel": [0.3, 0.1]},
-    {"id": 3, "type": "target", "pos": [80, 60], "vel": [-0.2, -0.15]},
-    {"id": 4, "type": "target", "pos": [30, 50], "vel": [0.4, -0.05]},
-    {"id": 5, "type": "target", "pos": [60, 10], "vel": [-0.1, 0.3]},
-    {"id": 6, "type": "target", "pos": [90, 70], "vel": [-0.25, -0.2]}
+    {"id": 0, "type": "drone",  "pos": [50, 0],  "vel": [0, 0], "can_sense": true},
+    {"id": 1, "type": "ground", "pos": [50, 80], "vel": [0, 0], "can_track": true},
+    {"id": 2, "type": "target", "pos": [5, 30],  "vel": [0.3, 0.1], "is_observable": true},
+    {"id": 3, "type": "target", "pos": [80, 60], "vel": [-0.2, -0.15], "is_observable": true},
+    {"id": 4, "type": "target", "pos": [30, 50], "vel": [0.4, -0.05], "is_observable": true},
+    {"id": 5, "type": "target", "pos": [60, 10], "vel": [-0.1, 0.3], "is_observable": true},
+    {"id": 6, "type": "target", "pos": [90, 70], "vel": [-0.25, -0.2], "is_observable": true}
   ],
   "channel": {
     "base_latency": 3,

@@ -391,30 +391,28 @@ static void draw_entities(const ViewerState& vs) {
 
         float r = std::max(4.0f, 5.0f * vs.zoom / 3.0f);
 
+        // Color by capability: blue=sensor, green=tracker, red=observable, purple=multi
         Color fill, outline;
-        bool use_circle = true;
-        if (ent.role == ScenarioEntity::Role::Drone) {
-            fill = {50, 130, 240, 255};
+        int cap_count = (int)ent.can_sense + (int)ent.can_track + (int)ent.is_observable;
+        if (cap_count > 1) {
+            fill = {180, 100, 220, 255};    // purple: multi-capability
+            outline = {210, 140, 255, 255};
+        } else if (ent.can_sense) {
+            fill = {50, 130, 240, 255};     // blue: sensor
             outline = {80, 160, 255, 255};
-        } else if (ent.role == ScenarioEntity::Role::Ground) {
-            fill = {50, 180, 100, 255};
-            outline = fill;
-            use_circle = false;
-        } else if (ent.role == ScenarioEntity::Role::Target) {
-            fill = {220, 60, 60, 255};
+        } else if (ent.can_track) {
+            fill = {50, 180, 100, 255};     // green: tracker
+            outline = {80, 210, 130, 255};
+        } else if (ent.is_observable) {
+            fill = {220, 60, 60, 255};      // red: observable
             outline = {255, 100, 100, 255};
         } else {
-            fill = {180, 100, 220, 255};
-            outline = {210, 140, 255, 255};
+            fill = {150, 150, 150, 255};    // gray: no capabilities
+            outline = {180, 180, 180, 255};
         }
 
-        if (use_circle) {
-            DrawCircleV(pos, r, fill);
-            DrawCircleLinesV(pos, r, outline);
-        } else {
-            DrawRectangle(static_cast<int>(pos.x - r), static_cast<int>(pos.y - r),
-                          static_cast<int>(r * 2), static_cast<int>(r * 2), fill);
-        }
+        DrawCircleV(pos, r, fill);
+        DrawCircleLinesV(pos, r, outline);
 
         // Label
         const char* label = TextFormat("%s %u", ent.role_name.c_str(), ent.id);

@@ -8,18 +8,10 @@
 #include <vector>
 
 struct ScenarioEntity {
-    enum class Role {
-        Drone,
-        Ground,
-        Target,
-        Custom,
-    };
-
     enum class WaypointMode { Stop, Loop };
 
     EntityId id;
-    Role role = Role::Target;
-    std::string role_name = "target";
+    std::string role_name;
     Vec2 position;
     Vec2 velocity;
 

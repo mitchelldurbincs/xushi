@@ -7,9 +7,9 @@
     {"min": [45, 15], "max": [55, 25]}
   ],
   "entities": [
-    {"id": 0, "type": "drone",  "pos": [50, 0],  "vel": [0, 0]},
-    {"id": 1, "type": "ground", "pos": [50, 50], "vel": [0, 0]},
-    {"id": 2, "type": "target", "pos": [20, 30], "vel": [1, 0]}
+    {"id": 0, "type": "drone",  "pos": [50, 0],  "vel": [0, 0], "can_sense": true},
+    {"id": 1, "type": "ground", "pos": [50, 50], "vel": [0, 0], "can_track": true},
+    {"id": 2, "type": "target", "pos": [20, 30], "vel": [1, 0], "is_observable": true}
   ],
   "channel": {
     "base_latency": 3,

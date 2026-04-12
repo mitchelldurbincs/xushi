@@ -5,11 +5,11 @@
   "max_sensor_range": 100.0,
   "obstacles": [],
   "entities": [
-    {"id": 0, "type": "drone",  "pos": [10, 0],  "vel": [0, 0]},
-    {"id": 1, "type": "drone",  "pos": [90, 0],  "vel": [0, 0]},
-    {"id": 2, "type": "ground", "pos": [10, 80], "vel": [0, 0]},
-    {"id": 3, "type": "ground", "pos": [90, 80], "vel": [0, 0]},
-    {"id": 4, "type": "target", "pos": [50, 40], "vel": [0.5, 0]}
+    {"id": 0, "type": "drone",  "pos": [10, 0],  "vel": [0, 0], "can_sense": true},
+    {"id": 1, "type": "drone",  "pos": [90, 0],  "vel": [0, 0], "can_sense": true},
+    {"id": 2, "type": "ground", "pos": [10, 80], "vel": [0, 0], "can_track": true},
+    {"id": 3, "type": "ground", "pos": [90, 80], "vel": [0, 0], "can_track": true},
+    {"id": 4, "type": "target", "pos": [50, 40], "vel": [0.5, 0], "is_observable": true}
   ],
   "channel": {
     "base_latency": 2,
