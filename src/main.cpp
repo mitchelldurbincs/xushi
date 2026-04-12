@@ -1,5 +1,7 @@
 #include "types.h"
 #include "map.h"
+#include "sensing.h"
+#include "rng.h"
 #include <cstdio>
 
 struct Entity {
@@ -9,30 +11,34 @@ struct Entity {
 };
 
 int main() {
-    // Build a simple map: one building in the middle of the street
     Map map;
     map.obstacles.push_back({{45.0f, 15.0f}, {55.0f, 25.0f}});
 
-    // Drone hovers south of the building
     Entity drone = {0, {50.0f, 0.0f}, {0.0f, 0.0f}};
-
-    // Target walks east across the map at y=30, north of the building.
-    // Sightline from drone (50,0) to target must pass through building y=15..25.
-    // At speed 1.0 m/tick, target crosses behind the building mid-run.
     Entity target = {1, {20.0f, 30.0f}, {1.0f, 0.0f}};
 
     constexpr float dt = 1.0f;
+    constexpr float max_range = 80.0f;
+    Rng rng(12345);
 
     for (int tick = 0; tick < 100; ++tick) {
-        // Movement
         target.position = target.position + target.velocity * dt;
 
-        // LOS check
-        bool los = map.line_of_sight(drone.position, target.position);
+        Observation obs{};
+        bool detected = sense(map, drone.position, drone.id,
+                              target.position, target.id,
+                              max_range, tick, rng, obs);
 
-        std::printf("tick %3d  target: (%5.1f, %4.1f)  LOS: %s\n",
-                    tick, target.position.x, target.position.y,
-                    los ? "YES" : " NO");
+        if (detected) {
+            std::printf("tick %3d  DETECTED  est:(%5.1f,%5.1f)  "
+                        "true:(%5.1f,%5.1f)  conf:%.2f  unc:%.2f\n",
+                        tick,
+                        obs.estimated_position.x, obs.estimated_position.y,
+                        target.position.x, target.position.y,
+                        obs.confidence, obs.uncertainty);
+        } else {
+            std::printf("tick %3d  ---\n", tick);
+        }
     }
 
     return 0;
