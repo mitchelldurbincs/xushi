@@ -1,4 +1,5 @@
 #include "types.h"
+#include "constants.h"
 #include "map.h"
 #include "sensing.h"
 #include "comm.h"
@@ -91,8 +92,6 @@ int main(int argc, char* argv[]) {
     Policy* policy = &default_policy;
 
     std::map<EntityId, Task> active_tasks;
-    constexpr float kTaskArrivalRadius = 5.0f;
-    constexpr float kTaskConfidenceThreshold = 0.5f;
 
     for (int tick = 0; tick < scn.ticks; ++tick) {
         // Movement — task override > policy override > default
@@ -103,9 +102,9 @@ int main(int argc, char* argv[]) {
                 Vec2 diff = task_it->second.target_position - e.position;
                 float dist = diff.length();
                 float step = e.speed * scn.dt;
-                if (dist > 1e-9f && step < dist)
+                if (dist > kEpsilon && step < dist)
                     e.position = e.position + diff * (step / dist);
-                else if (dist > 1e-9f)
+                else if (dist > kEpsilon)
                     e.position = task_it->second.target_position;
                 replay.log(replay_entity_position(tick, e.id, e.position));
                 continue;
@@ -140,9 +139,9 @@ int main(int argc, char* argv[]) {
                         Vec2 diff = *target - e.position;
                         float dist = diff.length();
                         float step = e.speed * scn.dt;
-                        if (dist > 1e-9f && step < dist)
+                        if (dist > kEpsilon && step < dist)
                             e.position = e.position + diff * (step / dist);
-                        else if (dist > 1e-9f)
+                        else if (dist > kEpsilon)
                             e.position = *target;
                         replay.log(replay_entity_position(tick, e.id, e.position));
                         continue;
@@ -237,16 +236,16 @@ int main(int argc, char* argv[]) {
             // False positive generation
             if (scn.perception.false_positive_rate > 0.0f &&
                 rng.uniform() < scn.perception.false_positive_rate) {
-                float angle = rng.uniform() * 6.28318530f;
+                float angle = rng.uniform() * kTau;
                 float range = rng.uniform() * scn.max_sensor_range;
                 Observation phantom{};
                 phantom.tick = tick;
                 phantom.observer = sensor->id;
-                phantom.target = 0xFFFFFFFF;
+                phantom.target = kPhantomTargetId;
                 phantom.estimated_position = sensor->position +
                     Vec2{std::cos(angle), std::sin(angle)} * range;
-                phantom.uncertainty = 2.0f;
-                phantom.confidence = 0.2f + rng.uniform() * 0.3f;
+                phantom.uncertainty = kPhantomUncertainty;
+                phantom.confidence = kPhantomConfidenceMin + rng.uniform() * kPhantomConfidenceRange;
                 phantom.is_false_positive = true;
 
                 if (sensor->can_track)
@@ -372,7 +371,7 @@ int main(int argc, char* argv[]) {
                 if (already_tasked) continue;
 
                 ScenarioEntity* best = nullptr;
-                float best_dist = 1e9f;
+                float best_dist = kInfDistance;
                 for (auto& e : entities) {
                     if (!e.can_sense) continue;
                     if (active_tasks.count(e.id)) continue;

@@ -1,6 +1,11 @@
 #include "belief.h"
 #include <algorithm>
 
+// Uncertainty growth multiplier applied per negative-evidence observation.
+// When a track is in sensor coverage but not detected, its uncertainty
+// is scaled by this factor (10% growth) to reflect increased doubt.
+static constexpr float kNegativeEvidenceUncertaintyGrowth = 1.1f;
+
 Track* BeliefState::find_track(EntityId target) {
     for (auto& t : tracks) {
         if (t.target == target) return &t;
@@ -91,7 +96,7 @@ void BeliefState::apply_negative_evidence(Vec2 observer_pos, float sensor_range,
 
         // Track was in sensor coverage but not detected — reduce confidence
         t.confidence *= (1.0f - factor);
-        t.uncertainty *= 1.1f;
+        t.uncertainty *= kNegativeEvidenceUncertaintyGrowth;
     }
 }
 

@@ -1,4 +1,5 @@
 #include "map.h"
+#include "types.h"  // kEpsilon
 #include <algorithm>
 #include <cmath>
 
@@ -11,7 +12,7 @@ static bool segment_intersects_rect(Vec2 from, Vec2 to, const Rect& rect) {
     float tmax = 1.0f;
 
     // X slab
-    if (std::fabs(d.x) < 1e-9f) {
+    if (std::fabs(d.x) < kEpsilon) {
         // Ray is parallel to X slab — check if origin is inside
         if (from.x < rect.min.x || from.x > rect.max.x)
             return false;
@@ -26,7 +27,7 @@ static bool segment_intersects_rect(Vec2 from, Vec2 to, const Rect& rect) {
     }
 
     // Y slab
-    if (std::fabs(d.y) < 1e-9f) {
+    if (std::fabs(d.y) < kEpsilon) {
         if (from.y < rect.min.y || from.y > rect.max.y)
             return false;
     } else {
