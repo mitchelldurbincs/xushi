@@ -30,7 +30,7 @@
   "belief": {
     "fresh_ticks": 5,
     "stale_ticks": 10,
-    "uncertainty_growth": 0.5,
-    "confidence_decay": 0.05
+    "uncertainty_growth_per_second": 0.5,
+    "confidence_decay_per_second": 0.05
   }
 }
