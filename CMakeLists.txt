@@ -4,7 +4,11 @@ project(xushi LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(xushi src/main.cpp src/map.cpp src/sensing.cpp)
+add_executable(xushi
+    src/main.cpp
+    src/map.cpp
+    src/sensing.cpp
+    src/comm.cpp)
 
 enable_testing()
 
@@ -16,3 +20,6 @@ add_test(NAME rng COMMAND test_rng)
 
 add_executable(test_sensing tests/test_sensing.cpp src/map.cpp src/sensing.cpp)
 add_test(NAME sensing COMMAND test_sensing)
+
+add_executable(test_comm tests/test_comm.cpp src/map.cpp src/sensing.cpp src/comm.cpp)
+add_test(NAME comm COMMAND test_comm)
