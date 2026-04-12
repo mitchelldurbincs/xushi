@@ -14,7 +14,8 @@ add_library(xushi_core STATIC
     src/scenario.cpp
     src/replay.cpp
     src/stats.cpp
-    src/sim.cpp)
+    src/sim.cpp
+    src/sim_engine.cpp)
 
 add_executable(xushi src/main.cpp)
 target_link_libraries(xushi xushi_core)
@@ -104,3 +105,8 @@ set_tests_properties(determinism PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR
 add_executable(test_golden tests/test_golden.cpp)
 target_link_libraries(test_golden xushi_core)
 add_test(NAME golden COMMAND test_golden)
+
+add_executable(test_parity tests/test_parity.cpp)
+target_link_libraries(test_parity xushi_core)
+add_test(NAME parity COMMAND test_parity)
+set_tests_properties(parity PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
