@@ -107,6 +107,26 @@ Scenario load_scenario(const std::string& path) {
                     throw std::runtime_error("unknown waypoint_mode '" + mode_str +
                                              "' for entity id " + std::to_string(e.id));
             }
+
+            // Branch points (optional)
+            if (ent.has("branch_points")) {
+                const auto& bp = ent["branch_points"].as_object();
+                for (const auto& [key, val] : bp) {
+                    int wp_idx = std::stoi(key);
+                    if (wp_idx < 0 || wp_idx >= static_cast<int>(e.waypoints.size()))
+                        throw std::runtime_error("branch_points index " + key +
+                                                 " out of range for entity " + std::to_string(e.id));
+                    std::vector<int> successors;
+                    for (const auto& s_val : val.as_array()) {
+                        int succ = s_val.as_int();
+                        if (succ < 0 || succ >= static_cast<int>(e.waypoints.size()))
+                            throw std::runtime_error("branch successor " + std::to_string(succ) +
+                                                     " out of range for entity " + std::to_string(e.id));
+                        successors.push_back(succ);
+                    }
+                    e.branch_points[wp_idx] = successors;
+                }
+            }
         }
 
         if (e.can_sense)     ++sensor_count;
@@ -142,6 +162,8 @@ Scenario load_scenario(const std::string& path) {
         s.belief.confidence_decay_per_second = static_cast<float>(
             b.number_or("confidence_decay_per_second",
                         b.number_or("confidence_decay", 0.05)));
+        s.belief.negative_evidence_factor = static_cast<float>(
+            b.number_or("negative_evidence_factor", 0.3));
     }
 
     validate_non_negative(path, "ticks", s.ticks);
@@ -159,6 +181,12 @@ Scenario load_scenario(const std::string& path) {
     validate_non_negative(path, "belief.stale_ticks", s.belief.stale_ticks);
     validate_non_negative(path, "belief.uncertainty_growth_per_second", s.belief.uncertainty_growth_per_second);
     validate_non_negative(path, "belief.confidence_decay_per_second", s.belief.confidence_decay_per_second);
+    if (s.belief.negative_evidence_factor < 0.0f || s.belief.negative_evidence_factor > 1.0f) {
+        std::ostringstream oss;
+        oss << "invalid scenario '" << path << "': belief.negative_evidence_factor"
+            << " must be in [0, 1], got " << s.belief.negative_evidence_factor;
+        throw std::runtime_error(oss.str());
+    }
 
     return s;
 }

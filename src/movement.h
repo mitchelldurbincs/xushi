@@ -1,6 +1,7 @@
 #pragma once
 
 #include "scenario.h"
+#include "rng.h"
 #include <cmath>
 
 struct WaypointEvent {
@@ -12,10 +13,22 @@ struct WaypointEvent {
 inline constexpr float kArrivalRadiusSq = 1.0f;
 
 // Advance to next waypoint. Returns true if there is a next waypoint to move toward.
-inline bool advance_waypoint(ScenarioEntity& e, WaypointEvent& event) {
+inline bool advance_waypoint(ScenarioEntity& e, WaypointEvent& event, Rng& rng) {
     event.arrived = true;
     event.waypoint_index = e.current_waypoint;
-    e.current_waypoint++;
+
+    // Check for branch point
+    auto it = e.branch_points.find(e.current_waypoint);
+    if (it != e.branch_points.end() && !it->second.empty()) {
+        const auto& successors = it->second;
+        int pick = static_cast<int>(rng.uniform() * successors.size());
+        if (pick >= static_cast<int>(successors.size()))
+            pick = static_cast<int>(successors.size()) - 1;
+        e.current_waypoint = successors[pick];
+    } else {
+        e.current_waypoint++;
+    }
+
     if (e.current_waypoint >= static_cast<int>(e.waypoints.size())) {
         if (e.waypoint_mode == ScenarioEntity::WaypointMode::Loop)
             e.current_waypoint = 0;
@@ -28,7 +41,7 @@ inline bool advance_waypoint(ScenarioEntity& e, WaypointEvent& event) {
 // Update a single entity's position for one tick.
 // Entities with waypoints move toward the current waypoint at their configured speed.
 // Entities without waypoints use constant velocity (existing behavior).
-inline WaypointEvent update_movement(ScenarioEntity& e, float dt) {
+inline WaypointEvent update_movement(ScenarioEntity& e, float dt, Rng& rng) {
     WaypointEvent event;
 
     if (e.waypoints.empty()) {
@@ -46,7 +59,7 @@ inline WaypointEvent update_movement(ScenarioEntity& e, float dt) {
 
     // Already at the waypoint (within arrival radius)
     if (dist_sq <= kArrivalRadiusSq) {
-        if (!advance_waypoint(e, event))
+        if (!advance_waypoint(e, event, rng))
             return event;
         target = e.waypoints[e.current_waypoint];
         diff = target - e.position;
@@ -61,7 +74,7 @@ inline WaypointEvent update_movement(ScenarioEntity& e, float dt) {
         // Overshoot or exact arrival: snap to waypoint
         e.position = target;
         if (!event.arrived)
-            advance_waypoint(e, event);
+            advance_waypoint(e, event, rng);
     } else {
         e.position = e.position + diff * (step / dist);
     }

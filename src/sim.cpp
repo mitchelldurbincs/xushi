@@ -4,6 +4,7 @@
 #include "comm.h"
 #include "belief.h"
 #include "movement.h"
+#include "policy.h"
 #include "rng.h"
 
 uint64_t compute_world_hash(const std::vector<ScenarioEntity>& entities,
@@ -61,13 +62,34 @@ SimResult run_scenario_headless(const Scenario& scn) {
     for (auto* t : trackers)
         beliefs[t->id] = BeliefState{};
 
+    NullPolicy default_policy;
+    Policy* policy = &default_policy;
+
     for (int tick = 0; tick < scn.ticks; ++tick) {
-        // Movement
-        for (auto& e : entities)
-            update_movement(e, scn.dt);
+        // Movement (policy can override for sensor entities)
+        for (auto& e : entities) {
+            if (e.can_sense) {
+                auto it = beliefs.find(e.id);
+                if (it != beliefs.end()) {
+                    auto target = policy->get_move_target(e.id, it->second, tick);
+                    if (target) {
+                        Vec2 diff = *target - e.position;
+                        float dist = diff.length();
+                        float step = e.speed * scn.dt;
+                        if (dist > 1e-9f && step < dist)
+                            e.position = e.position + diff * (step / dist);
+                        else if (dist > 1e-9f)
+                            e.position = *target;
+                        continue;
+                    }
+                }
+            }
+            update_movement(e, scn.dt, rng);
+        }
 
         // Sensing — each sensor observes all observables, broadcasts to all trackers
         for (auto* sensor : sensors) {
+            std::vector<EntityId> detected_targets;
             for (auto* obs_ent : observables) {
                 if (sensor->id == obs_ent->id) continue;  // skip self-sensing
                 result.stats.sensors_updated++;
@@ -80,6 +102,11 @@ SimResult run_scenario_headless(const Scenario& scn) {
 
                 if (detected) {
                     result.stats.detections_generated++;
+                    detected_targets.push_back(obs_ent->id);
+
+                    // Direct self-observation for sensor-trackers
+                    if (sensor->can_track)
+                        beliefs[sensor->id].update(obs, tick);
 
                     MessagePayload payload;
                     payload.type = MessagePayload::OBSERVATION;
@@ -95,6 +122,13 @@ SimResult run_scenario_headless(const Scenario& scn) {
                             result.stats.messages_dropped++;
                     }
                 }
+            }
+
+            // Negative evidence: sensor looked but didn't see — reduce confidence
+            if (sensor->can_track) {
+                beliefs[sensor->id].apply_negative_evidence(
+                    sensor->position, scn.max_sensor_range, map,
+                    detected_targets, scn.belief.negative_evidence_factor);
             }
         }
 

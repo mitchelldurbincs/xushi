@@ -11,6 +11,7 @@ struct BeliefConfig {
     int stale_ticks = 10;               // ticks after FRESH before EXPIRED
     float uncertainty_growth_per_second = 0.5f; // meters / second while STALE
     float confidence_decay_per_second = 0.05f;  // confidence units / second while STALE
+    float negative_evidence_factor = 0.3f;     // confidence reduction when in coverage but undetected
 };
 
 struct Track {
@@ -37,6 +38,13 @@ struct BeliefState {
     // Find a track for a given target, or nullptr if none.
     Track* find_track(EntityId target);
     const Track* find_track(EntityId target) const;
+
+    // Apply negative evidence: for tracks in sensor coverage that were NOT detected,
+    // reduce confidence and grow uncertainty.
+    void apply_negative_evidence(Vec2 observer_pos, float sensor_range,
+                                 const Map& map,
+                                 const std::vector<EntityId>& detected_targets,
+                                 float factor);
 };
 
 const char* track_status_str(TrackStatus s);

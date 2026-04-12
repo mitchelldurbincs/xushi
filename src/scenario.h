@@ -4,6 +4,7 @@
 #include "map.h"
 #include "comm.h"
 #include "belief.h"
+#include <map>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,7 @@ struct ScenarioEntity {
     float speed = 0.0f;
     WaypointMode waypoint_mode = WaypointMode::Stop;
     int current_waypoint = 0;  // runtime state: index into waypoints
+    std::map<int, std::vector<int>> branch_points;  // waypoint_idx -> successor indices
 };
 
 struct Scenario {

@@ -10,6 +10,7 @@
 #include "replay_events.h"
 #include "stats.h"
 #include "movement.h"
+#include "policy.h"
 #include "invariants.h"
 #include <chrono>
 #include <cstdio>
@@ -84,11 +85,31 @@ int main(int argc, char* argv[]) {
                     sensors.size(), trackers.size(), observables.size());
     }
 
+    NullPolicy default_policy;
+    Policy* policy = &default_policy;
+
     for (int tick = 0; tick < scn.ticks; ++tick) {
-        // Movement
+        // Movement (policy can override for sensor entities)
         auto t0 = Clock::now();
         for (auto& e : entities) {
-            auto event = update_movement(e, scn.dt);
+            if (e.can_sense) {
+                auto it = beliefs.find(e.id);
+                if (it != beliefs.end()) {
+                    auto target = policy->get_move_target(e.id, it->second, tick);
+                    if (target) {
+                        Vec2 diff = *target - e.position;
+                        float dist = diff.length();
+                        float step = e.speed * scn.dt;
+                        if (dist > 1e-9f && step < dist)
+                            e.position = e.position + diff * (step / dist);
+                        else if (dist > 1e-9f)
+                            e.position = *target;
+                        replay.log(replay_entity_position(tick, e.id, e.position));
+                        continue;
+                    }
+                }
+            }
+            auto event = update_movement(e, scn.dt, rng);
             if (!e.waypoints.empty())
                 replay.log(replay_entity_position(tick, e.id, e.position));
             if (event.arrived)
@@ -101,6 +122,7 @@ int main(int argc, char* argv[]) {
         t0 = Clock::now();
         double sensing_replay_us = 0;
         for (auto* sensor : sensors) {
+            std::vector<EntityId> detected_targets;
             for (auto* obs_ent : observables) {
                 if (sensor->id == obs_ent->id) continue;  // skip self-sensing
                 stats.sensors_updated++;
@@ -113,6 +135,11 @@ int main(int argc, char* argv[]) {
 
                 if (detected) {
                     stats.detections_generated++;
+                    detected_targets.push_back(obs_ent->id);
+
+                    // Direct self-observation for sensor-trackers
+                    if (sensor->can_track)
+                        beliefs[sensor->id].update(obs, tick);
 
                     MessagePayload payload;
                     payload.type = MessagePayload::OBSERVATION;
@@ -157,6 +184,13 @@ int main(int argc, char* argv[]) {
                         std::printf("tick %3d  %s[%u] ---\n",
                                     tick, sensor->role_name.c_str(), sensor->id);
                 }
+            }
+
+            // Negative evidence: sensor looked but didn't see — reduce confidence
+            if (sensor->can_track) {
+                beliefs[sensor->id].apply_negative_evidence(
+                    sensor->position, scn.max_sensor_range, map,
+                    detected_targets, scn.belief.negative_evidence_factor);
             }
         }
         stats.sensing_us += elapsed_us(t0) - sensing_replay_us;

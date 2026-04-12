@@ -73,6 +73,28 @@ void BeliefState::decay(int current_tick, float dt, const BeliefConfig& config) 
         tracks.end());
 }
 
+void BeliefState::apply_negative_evidence(Vec2 observer_pos, float sensor_range,
+                                           const Map& map,
+                                           const std::vector<EntityId>& detected_targets,
+                                           float factor) {
+    for (auto& t : tracks) {
+        // Skip targets that were actually detected this tick
+        bool was_detected = false;
+        for (EntityId id : detected_targets) {
+            if (t.target == id) { was_detected = true; break; }
+        }
+        if (was_detected) continue;
+
+        float dist = (t.estimated_position - observer_pos).length();
+        if (dist > sensor_range) continue;
+        if (!map.line_of_sight(observer_pos, t.estimated_position)) continue;
+
+        // Track was in sensor coverage but not detected — reduce confidence
+        t.confidence *= (1.0f - factor);
+        t.uncertainty *= 1.1f;
+    }
+}
+
 const char* track_status_str(TrackStatus s) {
     switch (s) {
         case TrackStatus::FRESH: return "FRESH";
