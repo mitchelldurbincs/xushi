@@ -2,6 +2,7 @@
 #include "map.h"
 #include "sensing.h"
 #include "comm.h"
+#include "belief.h"
 #include "rng.h"
 #include <cstdio>
 
@@ -23,9 +24,10 @@ int main() {
     constexpr float max_range = 80.0f;
     Rng rng(12345);
 
-    // Radio channel: 3 tick latency, no distance cost, 10% loss
     CommChannel radio = {3, 0.0f, 0.1f};
     CommSystem comms;
+    BeliefState ground_belief;
+    BeliefConfig belief_cfg;
 
     for (int tick = 0; tick < 60; ++tick) {
         // Movement
@@ -37,7 +39,7 @@ int main() {
                               target.position, target.id,
                               max_range, tick, rng, obs);
 
-        // Drone sends observation to ground team when it detects
+        // Drone sends observation to ground team
         if (detected) {
             float dist = (ground.position - drone.position).length();
             MessagePayload payload;
@@ -46,24 +48,34 @@ int main() {
             comms.send(drone.id, ground.id, payload, tick, dist, radio, rng);
         }
 
-        // Deliver messages due this tick
+        // Deliver messages and feed into belief
         std::vector<Message> delivered;
         comms.deliver(tick, delivered);
+        for (const auto& msg : delivered) {
+            ground_belief.update(msg.payload.observation, tick);
+        }
 
-        // Print
+        // Decay belief
+        ground_belief.decay(tick, belief_cfg);
+
+        // Print drone status
         if (detected) {
-            std::printf("tick %3d  DRONE sees target at (%5.1f,%5.1f)\n",
-                        tick, obs.estimated_position.x, obs.estimated_position.y);
+            std::printf("tick %3d  DRONE detected target\n", tick);
         } else {
             std::printf("tick %3d  DRONE ---\n", tick);
         }
 
-        for (const auto& msg : delivered) {
-            const auto& o = msg.payload.observation;
-            std::printf("         GROUND receives report from tick %d: "
-                        "target at (%5.1f,%5.1f)\n",
-                        msg.send_tick,
-                        o.estimated_position.x, o.estimated_position.y);
+        // Print ground belief
+        const Track* trk = ground_belief.find_track(target.id);
+        if (trk) {
+            int age = tick - trk->last_update_tick;
+            std::printf("         GROUND belief: target at (%5.1f,%5.1f)  "
+                        "conf:%.2f  unc:%.1f  age:%d  [%s]\n",
+                        trk->estimated_position.x, trk->estimated_position.y,
+                        trk->confidence, trk->uncertainty, age,
+                        track_status_str(trk->status));
+        } else {
+            std::printf("         GROUND belief: no track\n");
         }
     }
 

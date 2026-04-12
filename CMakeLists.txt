@@ -8,7 +8,8 @@ add_executable(xushi
     src/main.cpp
     src/map.cpp
     src/sensing.cpp
-    src/comm.cpp)
+    src/comm.cpp
+    src/belief.cpp)
 
 enable_testing()
 
@@ -23,3 +24,6 @@ add_test(NAME sensing COMMAND test_sensing)
 
 add_executable(test_comm tests/test_comm.cpp src/map.cpp src/sensing.cpp src/comm.cpp)
 add_test(NAME comm COMMAND test_comm)
+
+add_executable(test_belief tests/test_belief.cpp src/belief.cpp)
+add_test(NAME belief COMMAND test_belief)
