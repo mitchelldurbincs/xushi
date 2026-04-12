@@ -4,6 +4,59 @@
 #include <algorithm>
 #include <cstdio>
 #include <cmath>
+#include <limits>
+
+namespace {
+struct WorldBounds {
+    float min_x = 0.0f;
+    float min_y = 0.0f;
+    float max_x = 0.0f;
+    float max_y = 0.0f;
+    bool has_points = false;
+};
+
+void include_point(WorldBounds& bounds, float x, float y) {
+    if (!bounds.has_points) {
+        bounds.min_x = x;
+        bounds.max_x = x;
+        bounds.min_y = y;
+        bounds.max_y = y;
+        bounds.has_points = true;
+        return;
+    }
+
+    bounds.min_x = std::min(bounds.min_x, x);
+    bounds.min_y = std::min(bounds.min_y, y);
+    bounds.max_x = std::max(bounds.max_x, x);
+    bounds.max_y = std::max(bounds.max_y, y);
+}
+
+WorldBounds compute_world_bounds(const Scenario& scenario) {
+    WorldBounds bounds = {
+        std::numeric_limits<float>::infinity(),
+        std::numeric_limits<float>::infinity(),
+        -std::numeric_limits<float>::infinity(),
+        -std::numeric_limits<float>::infinity(),
+        false
+    };
+
+    for (const auto& obs : scenario.obstacles) {
+        include_point(bounds, obs.min.x, obs.min.y);
+        include_point(bounds, obs.max.x, obs.max.y);
+    }
+
+    const float replay_seconds = scenario.dt * static_cast<float>(scenario.ticks);
+    for (const auto& ent : scenario.entities) {
+        const float end_x = ent.position.x + ent.velocity.x * replay_seconds;
+        const float end_y = ent.position.y + ent.velocity.y * replay_seconds;
+
+        include_point(bounds, ent.position.x, ent.position.y);
+        include_point(bounds, end_x, end_y);
+    }
+
+    return bounds;
+}
+} // namespace
 
 // --- Loading ---
 
@@ -47,32 +100,26 @@ void viewer_load(ViewerState& vs, const std::string& replay_path) {
     }
 
     // Compute camera to fit map
-    float min_x = 0, min_y = 0, max_x = 0, max_y = 0;
-    for (const auto& obs : vs.scenario.obstacles) {
-        if (obs.max.x > max_x) max_x = obs.max.x;
-        if (obs.max.y > max_y) max_y = obs.max.y;
-    }
-    for (const auto& ent : vs.scenario.entities) {
-        // Account for entity travel over full sim
-        float ex = ent.position.x + ent.velocity.x * vs.scenario.dt * vs.total_ticks;
-        float ey = ent.position.y + ent.velocity.y * vs.scenario.dt * vs.total_ticks;
-        if (ent.position.x < min_x) min_x = ent.position.x;
-        if (ent.position.y < min_y) min_y = ent.position.y;
-        if (ex > max_x) max_x = ex;
-        if (ey > max_y) max_y = ey;
-        if (ent.position.x > max_x) max_x = ent.position.x;
-        if (ent.position.y > max_y) max_y = ent.position.y;
-    }
-
-    float margin = 20.0f;
-    float world_w = (max_x - min_x) + margin * 2;
-    float world_h = (max_y - min_y) + margin * 2;
+    const WorldBounds bounds = compute_world_bounds(vs.scenario);
+    const float margin = 20.0f;
+    const float min_extent = 1.0f;
+    const float default_zoom = 10.0f;
     float screen_w = static_cast<float>(GetScreenWidth());
     float screen_h = static_cast<float>(GetScreenHeight()) - 60.0f; // reserve bottom bar
 
+    if (!bounds.has_points) {
+        vs.cam_x = 0.0f;
+        vs.cam_y = 0.0f;
+        vs.zoom = default_zoom;
+        return;
+    }
+
+    const float world_w = std::max((bounds.max_x - bounds.min_x) + margin * 2.0f, min_extent);
+    const float world_h = std::max((bounds.max_y - bounds.min_y) + margin * 2.0f, min_extent);
+
     vs.zoom = std::min(screen_w / world_w, screen_h / world_h);
-    vs.cam_x = (min_x + max_x) / 2.0f;
-    vs.cam_y = (min_y + max_y) / 2.0f;
+    vs.cam_x = (bounds.min_x + bounds.max_x) / 2.0f;
+    vs.cam_y = (bounds.min_y + bounds.max_y) / 2.0f;
 }
 
 // --- Coordinate transform ---
