@@ -22,6 +22,9 @@ void viewer_load(ViewerState& vs, const std::string& replay_path) {
     vs.scenario_path = hdr["scenario"].as_string();
     vs.scenario = load_scenario(vs.scenario_path);
     vs.total_ticks = vs.scenario.ticks;
+    vs.entities_by_id.clear();
+    for (const auto& ent : vs.scenario.entities)
+        vs.entities_by_id[ent.id] = &ent;
 
     // Pre-allocate frames
     vs.frames.resize(vs.total_ticks);
@@ -236,18 +239,10 @@ static void draw_detections(const ViewerState& vs) {
 
     const auto& frame = vs.frames[vs.current_tick];
 
-    // Find drone position
     float dt = vs.scenario.dt;
     int tick = vs.current_tick;
-    Vector2 drone_screen = {0, 0};
-    for (const auto& ent : vs.scenario.entities) {
-        if (ent.type == "drone") {
-            float wx = ent.position.x + ent.velocity.x * dt * (tick + 1);
-            float wy = ent.position.y + ent.velocity.y * dt * (tick + 1);
-            drone_screen = world_to_screen(wx, wy, vs);
-            break;
-        }
-    }
+
+    int missing_observer_count = 0;
 
     for (const auto& det : frame.detections) {
         const auto& ep = det["est_pos"].as_array();
@@ -255,12 +250,32 @@ static void draw_detections(const ViewerState& vs) {
         float ey = static_cast<float>(ep[1].as_number());
         Vector2 est_screen = world_to_screen(ex, ey, vs);
 
-        // LOS line
-        DrawLineEx(drone_screen, est_screen, 1.5f, {80, 220, 80, 140});
+        bool draw_los = false;
+        Vector2 observer_screen = {0, 0};
+        if (det.has("observer")) {
+            EntityId observer_id = static_cast<EntityId>(det["observer"].as_int());
+            auto it = vs.entities_by_id.find(observer_id);
+            if (it != vs.entities_by_id.end() && it->second != nullptr) {
+                const ScenarioEntity* observer = it->second;
+                float wx = observer->position.x + observer->velocity.x * dt * (tick + 1);
+                float wy = observer->position.y + observer->velocity.y * dt * (tick + 1);
+                observer_screen = world_to_screen(wx, wy, vs);
+                draw_los = true;
+            }
+        }
+
+        // LOS line (only when observer is valid)
+        if (draw_los) {
+            DrawLineEx(observer_screen, est_screen, 1.5f, {80, 220, 80, 140});
+        } else {
+            missing_observer_count++;
+        }
 
         // Detection marker
         DrawCircleV(est_screen, 3.0f, {80, 220, 80, 200});
     }
+
+    (void)missing_observer_count;
 }
 
 static void draw_tracks(const ViewerState& vs) {

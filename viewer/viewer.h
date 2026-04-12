@@ -21,6 +21,7 @@ struct ViewerState {
     // Indexed replay data
     std::vector<TickFrame> frames; // one per tick
     int total_ticks = 0;
+    std::map<EntityId, const ScenarioEntity*> entities_by_id;
 
     // Playback
     int current_tick = 0;
