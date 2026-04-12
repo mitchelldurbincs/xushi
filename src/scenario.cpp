@@ -172,6 +172,14 @@ Scenario load_scenario(const std::string& path) {
             b.number_or("negative_evidence_factor", 0.3));
     }
 
+    // Perception config (optional)
+    if (root.has("perception")) {
+        const auto& p = root["perception"];
+        s.perception.miss_rate = static_cast<float>(p.number_or("miss_rate", 0.0));
+        s.perception.false_positive_rate = static_cast<float>(p.number_or("false_positive_rate", 0.0));
+        s.perception.class_confusion_rate = static_cast<float>(p.number_or("class_confusion_rate", 0.0));
+    }
+
     validate_non_negative(path, "ticks", s.ticks);
     validate_positive(path, "dt", s.dt);
     validate_positive(path, "max_sensor_range", s.max_sensor_range);
@@ -193,6 +201,10 @@ Scenario load_scenario(const std::string& path) {
             << " must be in [0, 1], got " << s.belief.negative_evidence_factor;
         throw std::runtime_error(oss.str());
     }
+
+    validate_non_negative(path, "perception.miss_rate", s.perception.miss_rate);
+    validate_non_negative(path, "perception.false_positive_rate", s.perception.false_positive_rate);
+    validate_non_negative(path, "perception.class_confusion_rate", s.perception.class_confusion_rate);
 
     return s;
 }

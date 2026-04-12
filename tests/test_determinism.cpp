@@ -72,6 +72,26 @@ static void test_benchmark_determinism() {
     CHECK(all_match, "benchmark scenario deterministic");
 }
 
+static void test_noisy_perception_determinism() {
+    Scenario scn = load_scenario("scenarios/noisy_perception.json");
+
+    SimResult a = run_scenario_headless(scn);
+    SimResult b = run_scenario_headless(scn);
+
+    CHECK(!a.world_hashes.empty(), "noisy perception hashes produced");
+    CHECK(a.world_hashes.size() == b.world_hashes.size(), "noisy perception hash count");
+
+    bool all_match = true;
+    size_t count = std::min(a.world_hashes.size(), b.world_hashes.size());
+    for (size_t i = 0; i < count; ++i) {
+        if (a.world_hashes[i] != b.world_hashes[i]) {
+            all_match = false;
+            break;
+        }
+    }
+    CHECK(all_match, "noisy perception deterministic");
+}
+
 static void test_task_verify_determinism() {
     Scenario scn = load_scenario("scenarios/task_verify.json");
 
@@ -169,5 +189,6 @@ int main() {
     test_waypoint_determinism();
     test_mixed_era_determinism();
     test_task_verify_determinism();
+    test_noisy_perception_determinism();
     TEST_REPORT();
 }

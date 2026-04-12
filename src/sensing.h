@@ -9,8 +9,10 @@ struct Observation {
     EntityId observer;
     EntityId target;
     Vec2 estimated_position;
-    float uncertainty;   // noise radius (meters)
-    float confidence;    // 0..1
+    float uncertainty;          // noise radius (meters)
+    float confidence;           // 0..1
+    int class_id = 0;           // target class (0 = unknown)
+    bool is_false_positive = false;
 };
 
 // Attempt to sense a target. Returns true and fills `out` if LOS exists and
@@ -20,4 +22,5 @@ bool sense(const Map& map,
            Vec2 observer_pos, EntityId observer_id,
            Vec2 target_pos, EntityId target_id,
            float max_range, int tick,
-           Rng& rng, Observation& out);
+           Rng& rng, Observation& out,
+           float miss_rate = 0.0f);

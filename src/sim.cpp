@@ -7,6 +7,7 @@
 #include "policy.h"
 #include "task.h"
 #include "rng.h"
+#include <cmath>
 
 uint64_t compute_world_hash(const std::vector<ScenarioEntity>& entities,
                             const std::map<EntityId, BeliefState>& beliefs) {
@@ -114,7 +115,8 @@ SimResult run_scenario_headless(const Scenario& scn) {
                 Observation obs{};
                 bool detected = sense(map, sensor->position, sensor->id,
                                       obs_ent->position, obs_ent->id,
-                                      scn.max_sensor_range, tick, rng, obs);
+                                      scn.max_sensor_range, tick, rng, obs,
+                                      scn.perception.miss_rate);
 
                 if (detected) {
                     result.stats.detections_generated++;
@@ -143,6 +145,38 @@ SimResult run_scenario_headless(const Scenario& scn) {
                 beliefs[sensor->id].apply_negative_evidence(
                     sensor->position, scn.max_sensor_range, map,
                     detected_targets, scn.belief.negative_evidence_factor);
+            }
+
+            // False positive generation
+            if (scn.perception.false_positive_rate > 0.0f &&
+                rng.uniform() < scn.perception.false_positive_rate) {
+                float angle = rng.uniform() * 6.28318530f;
+                float range = rng.uniform() * scn.max_sensor_range;
+                Observation phantom{};
+                phantom.tick = tick;
+                phantom.observer = sensor->id;
+                phantom.target = 0xFFFFFFFF;
+                phantom.estimated_position = sensor->position +
+                    Vec2{std::cos(angle), std::sin(angle)} * range;
+                phantom.uncertainty = 2.0f;
+                phantom.confidence = 0.2f + rng.uniform() * 0.3f;
+                phantom.is_false_positive = true;
+
+                if (sensor->can_track)
+                    beliefs[sensor->id].update(phantom, tick);
+
+                MessagePayload payload;
+                payload.type = MessagePayload::OBSERVATION;
+                payload.observation = phantom;
+                for (auto* tracker : trackers) {
+                    float dist = (tracker->position - sensor->position).length();
+                    int dt = comms.send(sensor->id, tracker->id, payload, tick,
+                                        dist, scn.channel, rng);
+                    if (dt >= 0)
+                        result.stats.messages_sent++;
+                    else
+                        result.stats.messages_dropped++;
+                }
             }
         }
 

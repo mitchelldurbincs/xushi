@@ -4,7 +4,8 @@ bool sense(const Map& map,
            Vec2 observer_pos, EntityId observer_id,
            Vec2 target_pos, EntityId target_id,
            float max_range, int tick,
-           Rng& rng, Observation& out) {
+           Rng& rng, Observation& out,
+           float miss_rate) {
 
     Vec2 diff = target_pos - observer_pos;
     float range = diff.length();
@@ -13,6 +14,10 @@ bool sense(const Map& map,
         return false;
 
     if (!map.line_of_sight(observer_pos, target_pos))
+        return false;
+
+    // Miss rate: probabilistically fail to detect
+    if (miss_rate > 0.0f && rng.uniform() < miss_rate)
         return false;
 
     // Noise scales linearly with range fraction

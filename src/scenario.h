@@ -40,6 +40,13 @@ struct Scenario {
 
     CommChannel channel = {3, 0.0f, 0.1f};
     BeliefConfig belief = {};
+
+    struct PerceptionConfig {
+        float miss_rate = 0.0f;            // probability of missing a valid detection [0,1]
+        float false_positive_rate = 0.0f;  // probability of phantom detection per sensor per tick
+        float class_confusion_rate = 0.0f; // probability of misidentifying target class
+    };
+    PerceptionConfig perception = {};
 };
 
 // Load a scenario from a JSON file. Throws std::runtime_error on failure.
