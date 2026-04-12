@@ -1,19 +1,6 @@
+#include "test_helpers.h"
 #include "../src/scenario.h"
-#include <cstdio>
 #include <cmath>
-
-static int tests_run = 0;
-static int tests_passed = 0;
-
-#define CHECK(expr, name) do { \
-    tests_run++; \
-    if (expr) { \
-        tests_passed++; \
-        std::printf("  PASS  %s\n", name); \
-    } else { \
-        std::printf("  FAIL  %s\n", name); \
-    } \
-} while(0)
 
 static void test_load_default() {
     Scenario s = load_scenario("scenarios/default.json");
@@ -47,11 +34,8 @@ static void test_missing_file() {
 
 int main() {
     std::printf("Running scenario tests...\n");
-
     test_load_default();
     test_load_los_blocked();
     test_missing_file();
-
-    std::printf("\n%d/%d tests passed\n", tests_passed, tests_run);
-    return (tests_passed == tests_run) ? 0 : 1;
+    TEST_REPORT();
 }

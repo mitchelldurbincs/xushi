@@ -5,6 +5,7 @@
 #include "sensing.h"
 #include "belief.h"
 #include "scenario.h"
+#include "stats.h"
 #include <cstdint>
 
 // Event factory helpers. Each returns a JsonValue ready to log.
@@ -82,6 +83,20 @@ inline JsonValue replay_track_expired(int tick, EntityId owner, EntityId target)
         {"tick",   json_number(tick)},
         {"owner",  json_number(owner)},
         {"target", json_number(target)},
+    });
+}
+
+inline JsonValue replay_stats(int tick, const SystemStats& s) {
+    return json_object({
+        {"type",               json_string("stats")},
+        {"tick",               json_number(tick)},
+        {"rays_cast",          json_number(s.rays_cast)},
+        {"detections",         json_number(s.detections_generated)},
+        {"messages_sent",      json_number(s.messages_sent)},
+        {"messages_dropped",   json_number(s.messages_dropped)},
+        {"messages_delivered",  json_number(s.messages_delivered)},
+        {"tracks_active",      json_number(s.tracks_active)},
+        {"tracks_expired",     json_number(s.tracks_expired)},
     });
 }
 

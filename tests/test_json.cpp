@@ -1,27 +1,12 @@
+#include "test_helpers.h"
 #include "../src/json.h"
-#include <cstdio>
 #include <cmath>
-
-static int tests_run = 0;
-static int tests_passed = 0;
-
-#define CHECK(expr, name) do { \
-    tests_run++; \
-    if (expr) { \
-        tests_passed++; \
-        std::printf("  PASS  %s\n", name); \
-    } else { \
-        std::printf("  FAIL  %s\n", name); \
-    } \
-} while(0)
 
 static void test_parse_number() {
     auto v = json_parse("42");
     CHECK(v.type == JsonValue::NUMBER && v.as_number() == 42.0, "parse integer");
-
     v = json_parse("-3.14");
     CHECK(std::fabs(v.as_number() - (-3.14)) < 0.001, "parse negative float");
-
     v = json_parse("1e3");
     CHECK(v.as_number() == 1000.0, "parse scientific notation");
 }
@@ -29,7 +14,6 @@ static void test_parse_number() {
 static void test_parse_string() {
     auto v = json_parse("\"hello\"");
     CHECK(v.as_string() == "hello", "parse simple string");
-
     v = json_parse("\"a\\nb\"");
     CHECK(v.as_string() == "a\nb", "parse string with escape");
 }
@@ -69,7 +53,6 @@ static void test_parse_error() {
     bool caught = false;
     try { json_parse("{invalid}"); } catch (const std::runtime_error&) { caught = true; }
     CHECK(caught, "parse error on malformed input");
-
     caught = false;
     try { json_parse("42 extra"); } catch (const std::runtime_error&) { caught = true; }
     CHECK(caught, "parse error on trailing content");
@@ -84,7 +67,6 @@ static void test_defaults() {
 
 int main() {
     std::printf("Running JSON tests...\n");
-
     test_parse_number();
     test_parse_string();
     test_parse_bool_null();
@@ -94,7 +76,5 @@ int main() {
     test_empty_containers();
     test_parse_error();
     test_defaults();
-
-    std::printf("\n%d/%d tests passed\n", tests_passed, tests_run);
-    return (tests_passed == tests_run) ? 0 : 1;
+    TEST_REPORT();
 }
