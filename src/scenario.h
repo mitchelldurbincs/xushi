@@ -8,8 +8,14 @@
 #include <vector>
 
 struct ScenarioEntity {
+    enum class Role {
+        Drone,
+        Ground,
+        Target,
+    };
+
     EntityId id;
-    std::string type; // "drone", "ground", "target"
+    Role role = Role::Target;
     Vec2 position;
     Vec2 velocity;
 };
