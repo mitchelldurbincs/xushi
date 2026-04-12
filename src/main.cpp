@@ -111,9 +111,31 @@ int main(int argc, char* argv[]) {
                 continue;
             }
             if (e.can_sense) {
-                auto it = beliefs.find(e.id);
-                if (it != beliefs.end()) {
-                    auto target = policy->get_move_target(e.id, it->second, tick);
+                PolicyObservation pobs;
+                pobs.id = e.id;
+                pobs.position = e.position;
+                pobs.tick = tick;
+                auto belief_it = beliefs.find(e.id);
+                if (belief_it != beliefs.end()) {
+                    // Copy top-K tracks by confidence into fixed-size observation
+                    auto& tracks = belief_it->second.tracks;
+                    // Simple selection: iterate and keep highest confidence
+                    for (const auto& t : tracks) {
+                        if (pobs.num_tracks < kMaxPolicyTracks) {
+                            pobs.local_tracks[pobs.num_tracks++] = t;
+                        } else {
+                            // Replace lowest-confidence entry if this one is better
+                            int worst = 0;
+                            for (int j = 1; j < kMaxPolicyTracks; ++j)
+                                if (pobs.local_tracks[j].confidence < pobs.local_tracks[worst].confidence)
+                                    worst = j;
+                            if (t.confidence > pobs.local_tracks[worst].confidence)
+                                pobs.local_tracks[worst] = t;
+                        }
+                    }
+                }
+                {
+                    auto target = policy->get_move_target(pobs);
                     if (target) {
                         Vec2 diff = *target - e.position;
                         float dist = diff.length();
