@@ -9,7 +9,9 @@ add_executable(xushi
     src/map.cpp
     src/sensing.cpp
     src/comm.cpp
-    src/belief.cpp)
+    src/belief.cpp
+    src/json.cpp
+    src/scenario.cpp)
 
 enable_testing()
 
@@ -27,3 +29,11 @@ add_test(NAME comm COMMAND test_comm)
 
 add_executable(test_belief tests/test_belief.cpp src/belief.cpp)
 add_test(NAME belief COMMAND test_belief)
+
+add_executable(test_json tests/test_json.cpp src/json.cpp)
+add_test(NAME json COMMAND test_json)
+
+add_executable(test_scenario tests/test_scenario.cpp
+    src/json.cpp src/scenario.cpp src/map.cpp src/sensing.cpp src/comm.cpp src/belief.cpp)
+add_test(NAME scenario COMMAND test_scenario)
+set_tests_properties(scenario PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})

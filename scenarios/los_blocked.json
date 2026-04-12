@@ -1,0 +1,19 @@
+{
+  "seed": 99,
+  "dt": 1.0,
+  "ticks": 20,
+  "max_sensor_range": 100.0,
+  "obstacles": [
+    {"min": [4, 4], "max": [6, 6]}
+  ],
+  "entities": [
+    {"id": 0, "type": "drone",  "pos": [0, 5],  "vel": [0, 0]},
+    {"id": 1, "type": "ground", "pos": [0, 10], "vel": [0, 0]},
+    {"id": 2, "type": "target", "pos": [10, 5], "vel": [0, 0]}
+  ],
+  "channel": {
+    "base_latency": 1,
+    "per_distance": 0.0,
+    "loss": 0.0
+  }
+}
