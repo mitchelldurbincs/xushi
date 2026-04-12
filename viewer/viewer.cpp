@@ -7,14 +7,6 @@
 #include <limits>
 
 namespace {
-struct WorldBounds {
-    float min_x = 0.0f;
-    float min_y = 0.0f;
-    float max_x = 0.0f;
-    float max_y = 0.0f;
-    bool has_points = false;
-};
-
 void include_point(WorldBounds& bounds, float x, float y) {
     if (!bounds.has_points) {
         bounds.min_x = x;
@@ -30,6 +22,8 @@ void include_point(WorldBounds& bounds, float x, float y) {
     bounds.max_x = std::max(bounds.max_x, x);
     bounds.max_y = std::max(bounds.max_y, y);
 }
+
+} // namespace
 
 WorldBounds compute_world_bounds(const Scenario& scenario) {
     WorldBounds bounds = {
@@ -56,7 +50,6 @@ WorldBounds compute_world_bounds(const Scenario& scenario) {
 
     return bounds;
 }
-} // namespace
 
 // --- Loading ---
 
