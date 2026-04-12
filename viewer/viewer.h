@@ -9,8 +9,10 @@
 struct TickFrame {
     std::vector<JsonValue> detections;
     std::vector<JsonValue> track_updates;
+    std::vector<JsonValue> track_expired;
     std::vector<JsonValue> messages; // sent, delivered, dropped
     std::string world_hash;
+    JsonValue stats_snapshot; // optional; NUL when unavailable for this tick
 };
 
 struct ViewerState {
