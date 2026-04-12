@@ -1,5 +1,9 @@
 #include "sensing.h"
 
+// Maximum position-noise standard deviation (meters) at maximum sensor range.
+// Noise scales linearly from 0 at range=0 to this value at range=max_range.
+static constexpr float kMaxNoiseStddev = 2.0f;
+
 bool sense(const Map& map,
            Vec2 observer_pos, EntityId observer_id,
            Vec2 target_pos, EntityId target_id,
@@ -22,7 +26,7 @@ bool sense(const Map& map,
 
     // Noise scales linearly with range fraction
     float range_frac = range / max_range;
-    float noise_stddev = range_frac * 2.0f; // up to 2m stddev at max range
+    float noise_stddev = range_frac * kMaxNoiseStddev;
 
     Vec2 noise = {rng.normal() * noise_stddev, rng.normal() * noise_stddev};
 

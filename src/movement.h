@@ -9,7 +9,10 @@ struct WaypointEvent {
     int waypoint_index = -1;
 };
 
-// Arrival radius squared. Entity "arrives" at a waypoint when within this distance.
+// Waypoint arrival radius squared (1 m^2, i.e. ~1 m radius).
+// This is tighter than kTaskArrivalRadius (constants.h, 5 m) because waypoint
+// navigation requires precise arrival, while task verification only needs
+// proximity to an area of interest.
 inline constexpr float kArrivalRadiusSq = 1.0f;
 
 // Advance to next waypoint. Returns true if there is a next waypoint to move toward.
@@ -70,7 +73,7 @@ inline WaypointEvent update_movement(ScenarioEntity& e, float dt, Rng& rng) {
     float step = e.speed * dt;
     float dist = std::sqrt(dist_sq);
 
-    if (dist <= 1e-9f || step >= dist) {
+    if (dist <= kEpsilon || step >= dist) {
         // Overshoot or exact arrival: snap to waypoint
         e.position = target;
         if (!event.arrived)
