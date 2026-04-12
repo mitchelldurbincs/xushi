@@ -72,11 +72,36 @@ static void test_benchmark_determinism() {
     CHECK(all_match, "benchmark scenario deterministic");
 }
 
+static void test_multi_agent_determinism() {
+    Scenario scn = load_scenario("scenarios/multi_agent.json");
+
+    SimResult a = run_scenario_headless(scn);
+    SimResult b = run_scenario_headless(scn);
+
+    CHECK(!a.world_hashes.empty(), "multi-agent hashes produced");
+    CHECK(a.world_hashes.size() == b.world_hashes.size(), "multi-agent hash count");
+
+    bool all_match = true;
+    size_t count = std::min(a.world_hashes.size(), b.world_hashes.size());
+    for (size_t i = 0; i < count; ++i) {
+        if (a.world_hashes[i] != b.world_hashes[i]) {
+            all_match = false;
+            break;
+        }
+    }
+    CHECK(all_match, "multi-agent deterministic");
+
+    CHECK(a.stats.detections_generated == b.stats.detections_generated, "multi-agent same detections");
+    CHECK(a.stats.messages_sent == b.stats.messages_sent, "multi-agent same messages sent");
+    CHECK(a.final_track_count == b.final_track_count, "multi-agent same final tracks");
+}
+
 int main() {
     std::printf("Running determinism tests...\n");
     test_same_seed_same_hashes();
     test_same_seed_same_counters();
     test_different_seed_different_hashes();
     test_benchmark_determinism();
+    test_multi_agent_determinism();
     TEST_REPORT();
 }

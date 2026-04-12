@@ -96,12 +96,8 @@ Scenario load_scenario(const std::string& path) {
 
     if (drone_count == 0)
         throw std::runtime_error("scenario validation failed: missing required role 'drone'");
-    if (drone_count > 1)
-        throw std::runtime_error("scenario validation failed: duplicate role 'drone' (expected exactly 1)");
     if (ground_count == 0)
         throw std::runtime_error("scenario validation failed: missing required role 'ground'");
-    if (ground_count > 1)
-        throw std::runtime_error("scenario validation failed: duplicate role 'ground' (expected exactly 1)");
     if (target_count == 0)
         throw std::runtime_error("scenario validation failed: missing required role 'target' (expected at least 1)");
 

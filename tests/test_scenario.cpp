@@ -42,8 +42,8 @@ static void test_missing_file() {
     CHECK(caught, "error on missing file");
 }
 
-static void test_duplicate_drone_rejected() {
-    const char* path = "tests/tmp_duplicate_drone.json";
+static void test_multi_drone_accepted() {
+    const char* path = "tests/tmp_multi_drone.json";
     write_temp_scenario(path,
         "{"
         "\"seed\":1,"
@@ -56,18 +56,17 @@ static void test_duplicate_drone_rejected() {
         "]"
         "}");
 
-    bool caught = false;
+    bool ok = false;
     try {
-        load_scenario(path);
-    } catch (const std::runtime_error& e) {
-        caught = std::string(e.what()).find("duplicate role 'drone'") != std::string::npos;
-    }
-    CHECK(caught, "duplicate drone rejected");
+        Scenario s = load_scenario(path);
+        ok = s.entities.size() == 4;
+    } catch (...) {}
+    CHECK(ok, "multi drone accepted");
     std::remove(path);
 }
 
-static void test_duplicate_ground_rejected() {
-    const char* path = "tests/tmp_duplicate_ground.json";
+static void test_multi_ground_accepted() {
+    const char* path = "tests/tmp_multi_ground.json";
     write_temp_scenario(path,
         "{"
         "\"seed\":1,"
@@ -80,13 +79,12 @@ static void test_duplicate_ground_rejected() {
         "]"
         "}");
 
-    bool caught = false;
+    bool ok = false;
     try {
-        load_scenario(path);
-    } catch (const std::runtime_error& e) {
-        caught = std::string(e.what()).find("duplicate role 'ground'") != std::string::npos;
-    }
-    CHECK(caught, "duplicate ground rejected");
+        Scenario s = load_scenario(path);
+        ok = s.entities.size() == 4;
+    } catch (...) {}
+    CHECK(ok, "multi ground accepted");
     std::remove(path);
 }
 
@@ -200,8 +198,8 @@ int main() {
     test_load_default();
     test_load_los_blocked();
     test_missing_file();
-    test_duplicate_drone_rejected();
-    test_duplicate_ground_rejected();
+    test_multi_drone_accepted();
+    test_multi_ground_accepted();
     test_unknown_role_rejected();
     test_belief_rate_units_per_second_keys();
     test_invalid_validations();
