@@ -37,6 +37,16 @@ struct ViewerState {
     bool dragging_slider = false;
 };
 
+struct WorldBounds {
+    float min_x = 0.0f;
+    float min_y = 0.0f;
+    float max_x = 0.0f;
+    float max_y = 0.0f;
+    bool has_points = false;
+};
+
+WorldBounds compute_world_bounds(const Scenario& scenario);
+
 void viewer_load(ViewerState& vs, const std::string& replay_path);
 void viewer_update(ViewerState& vs);
 void viewer_draw(const ViewerState& vs);
