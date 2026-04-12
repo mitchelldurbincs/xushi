@@ -11,7 +11,8 @@ add_executable(xushi
     src/comm.cpp
     src/belief.cpp
     src/json.cpp
-    src/scenario.cpp)
+    src/scenario.cpp
+    src/replay.cpp)
 
 enable_testing()
 
@@ -37,3 +38,7 @@ add_executable(test_scenario tests/test_scenario.cpp
     src/json.cpp src/scenario.cpp src/map.cpp src/sensing.cpp src/comm.cpp src/belief.cpp)
 add_test(NAME scenario COMMAND test_scenario)
 set_tests_properties(scenario PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+add_executable(test_replay tests/test_replay.cpp
+    src/json.cpp src/replay.cpp src/belief.cpp)
+add_test(NAME replay COMMAND test_replay)

@@ -37,3 +37,14 @@ struct JsonValue {
 
 // Parse a JSON string. Throws std::runtime_error on parse failure.
 JsonValue json_parse(const std::string& input);
+
+// Serialize a JsonValue to a compact single-line JSON string.
+std::string json_serialize(const JsonValue& v);
+
+// Builder helpers for convenient construction.
+JsonValue json_null();
+JsonValue json_bool(bool b);
+JsonValue json_number(double n);
+JsonValue json_string(const std::string& s);
+JsonValue json_array(std::vector<JsonValue> elems);
+JsonValue json_object(std::map<std::string, JsonValue> pairs);

@@ -1,18 +1,19 @@
 #include "comm.h"
 #include <cmath>
 
-void CommSystem::send(EntityId sender, EntityId receiver,
+bool CommSystem::send(EntityId sender, EntityId receiver,
                       const MessagePayload& payload, int current_tick,
                       float distance, const CommChannel& channel, Rng& rng) {
     // Check for loss
     if (rng.uniform() < channel.loss_probability)
-        return;
+        return false;
 
     int distance_latency = static_cast<int>(
         std::ceil(distance * channel.latency_per_distance));
     int delivery_tick = current_tick + channel.base_latency_ticks + distance_latency;
 
     pending.push_back({sender, receiver, current_tick, delivery_tick, payload});
+    return true;
 }
 
 void CommSystem::deliver(int current_tick, std::vector<Message>& out) {

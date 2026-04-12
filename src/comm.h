@@ -30,7 +30,8 @@ struct CommSystem {
 
     // Queue a message. Computes delivery_tick from channel config and distance.
     // May drop the message based on loss_probability.
-    void send(EntityId sender, EntityId receiver,
+    // Returns true if queued, false if dropped.
+    bool send(EntityId sender, EntityId receiver,
               const MessagePayload& payload, int current_tick,
               float distance, const CommChannel& channel, Rng& rng);
 

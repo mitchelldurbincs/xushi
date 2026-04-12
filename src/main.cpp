@@ -5,8 +5,11 @@
 #include "belief.h"
 #include "rng.h"
 #include "scenario.h"
+#include "replay.h"
+#include "replay_events.h"
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 
 struct Entity {
     EntityId id;
@@ -14,6 +17,32 @@ struct Entity {
     Vec2 position;
     Vec2 velocity;
 };
+
+// Simple world hash: FNV-1a over entity positions and belief tracks.
+static uint64_t compute_world_hash(const std::vector<Entity>& entities,
+                                    const BeliefState& belief) {
+    uint64_t h = 14695981039346656037ULL; // FNV offset basis
+    auto mix = [&](const void* data, size_t len) {
+        const auto* bytes = static_cast<const uint8_t*>(data);
+        for (size_t i = 0; i < len; ++i) {
+            h ^= bytes[i];
+            h *= 1099511628211ULL; // FNV prime
+        }
+    };
+    for (const auto& e : entities) {
+        mix(&e.id, sizeof(e.id));
+        mix(&e.position.x, sizeof(float));
+        mix(&e.position.y, sizeof(float));
+    }
+    for (const auto& t : belief.tracks) {
+        mix(&t.target, sizeof(t.target));
+        mix(&t.estimated_position.x, sizeof(float));
+        mix(&t.estimated_position.y, sizeof(float));
+        mix(&t.confidence, sizeof(float));
+        mix(&t.uncertainty, sizeof(float));
+    }
+    return h;
+}
 
 int main(int argc, char* argv[]) {
     const char* path = (argc > 1) ? argv[1] : "scenarios/default.json";
@@ -26,17 +55,20 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Build map
+    // Derive replay path: replace .json with .replay
+    std::string replay_path = path;
+    auto dot = replay_path.rfind('.');
+    if (dot != std::string::npos)
+        replay_path = replay_path.substr(0, dot);
+    replay_path += ".replay";
+
     Map map;
     map.obstacles = scn.obstacles;
 
-    // Spawn entities
     std::vector<Entity> entities;
-    for (const auto& se : scn.entities) {
+    for (const auto& se : scn.entities)
         entities.push_back({se.id, se.type, se.position, se.velocity});
-    }
 
-    // Find entities by type
     Entity* drone = nullptr;
     Entity* ground = nullptr;
     std::vector<Entity*> targets;
@@ -55,16 +87,18 @@ int main(int argc, char* argv[]) {
     CommSystem comms;
     BeliefState ground_belief;
 
-    std::printf("scenario: %s  seed: %llu  ticks: %d\n\n", path,
-                static_cast<unsigned long long>(scn.seed), scn.ticks);
+    ReplayWriter replay(replay_path);
+    replay.log(replay_header(scn, path));
+
+    std::printf("scenario: %s  seed: %llu  ticks: %d  replay: %s\n\n",
+                path, static_cast<unsigned long long>(scn.seed), scn.ticks, replay_path.c_str());
 
     for (int tick = 0; tick < scn.ticks; ++tick) {
         // Movement
-        for (auto& e : entities) {
+        for (auto& e : entities)
             e.position = e.position + e.velocity * scn.dt;
-        }
 
-        // Sensing: drone checks all targets
+        // Sensing
         for (auto* tgt : targets) {
             Observation obs{};
             bool detected = sense(map, drone->position, drone->id,
@@ -72,11 +106,21 @@ int main(int argc, char* argv[]) {
                                   scn.max_sensor_range, tick, rng, obs);
 
             if (detected) {
+                replay.log(replay_detection(tick, obs));
+
                 float dist = (ground->position - drone->position).length();
                 MessagePayload payload;
                 payload.type = MessagePayload::OBSERVATION;
                 payload.observation = obs;
-                comms.send(drone->id, ground->id, payload, tick, dist, scn.channel, rng);
+
+                int delivery_tick = tick + scn.channel.base_latency_ticks;
+                bool sent = comms.send(drone->id, ground->id, payload, tick,
+                                       dist, scn.channel, rng);
+                if (sent) {
+                    replay.log(replay_msg_sent(tick, drone->id, ground->id, delivery_tick));
+                } else {
+                    replay.log(replay_msg_dropped(tick, drone->id, ground->id));
+                }
 
                 std::printf("tick %3d  DRONE detected target %u\n", tick, tgt->id);
             } else {
@@ -87,14 +131,30 @@ int main(int argc, char* argv[]) {
         // Deliver messages and feed into belief
         std::vector<Message> delivered;
         comms.deliver(tick, delivered);
+
+        // Track which targets had tracks before this tick (for expiry detection)
+        std::vector<EntityId> tracked_before;
+        for (const auto& t : ground_belief.tracks)
+            tracked_before.push_back(t.target);
+
         for (const auto& msg : delivered) {
+            replay.log(replay_msg_delivered(tick, msg.sender, msg.receiver));
             ground_belief.update(msg.payload.observation, tick);
         }
 
         // Decay belief
         ground_belief.decay(tick, scn.belief);
 
-        // Print ground belief for each target
+        // Log track updates and detect expirations
+        for (const auto& t : ground_belief.tracks)
+            replay.log(replay_track_update(tick, ground->id, t));
+
+        for (EntityId id : tracked_before) {
+            if (!ground_belief.find_track(id))
+                replay.log(replay_track_expired(tick, ground->id, id));
+        }
+
+        // Print ground belief
         for (auto* tgt : targets) {
             const Track* trk = ground_belief.find_track(tgt->id);
             if (trk) {
@@ -109,7 +169,14 @@ int main(int argc, char* argv[]) {
                 std::printf("         GROUND belief: target %u no track\n", tgt->id);
             }
         }
+
+        // World hash every 10 ticks
+        if (tick % 10 == 0) {
+            uint64_t h = compute_world_hash(entities, ground_belief);
+            replay.log(replay_world_hash(tick, h));
+        }
     }
 
+    replay.close();
     return 0;
 }

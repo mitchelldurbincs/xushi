@@ -221,3 +221,112 @@ JsonValue json_parse(const std::string& input) {
         p.error("trailing content");
     return v;
 }
+
+// --- Serializer ---
+
+static void escape_string(const std::string& s, std::string& out) {
+    out += '"';
+    for (char c : s) {
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:   out += c; break;
+        }
+    }
+    out += '"';
+}
+
+static void serialize_impl(const JsonValue& v, std::string& out) {
+    switch (v.type) {
+        case JsonValue::NUL:
+            out += "null";
+            break;
+        case JsonValue::BOOL:
+            out += v.bool_val ? "true" : "false";
+            break;
+        case JsonValue::NUMBER: {
+            // Use snprintf for compact output; strip trailing zeros after decimal
+            char buf[64];
+            std::snprintf(buf, sizeof(buf), "%.6g", v.number_val);
+            out += buf;
+            break;
+        }
+        case JsonValue::STRING:
+            escape_string(v.string_val, out);
+            break;
+        case JsonValue::ARRAY:
+            out += '[';
+            for (size_t i = 0; i < v.array_val.size(); ++i) {
+                if (i > 0) out += ',';
+                serialize_impl(v.array_val[i], out);
+            }
+            out += ']';
+            break;
+        case JsonValue::OBJECT:
+            out += '{';
+            {
+                bool first = true;
+                for (const auto& kv : v.object_val) {
+                    if (!first) out += ',';
+                    first = false;
+                    escape_string(kv.first, out);
+                    out += ':';
+                    serialize_impl(kv.second, out);
+                }
+            }
+            out += '}';
+            break;
+    }
+}
+
+std::string json_serialize(const JsonValue& v) {
+    std::string out;
+    serialize_impl(v, out);
+    return out;
+}
+
+// --- Builders ---
+
+JsonValue json_null() {
+    JsonValue v;
+    v.type = JsonValue::NUL;
+    return v;
+}
+
+JsonValue json_bool(bool b) {
+    JsonValue v;
+    v.type = JsonValue::BOOL;
+    v.bool_val = b;
+    return v;
+}
+
+JsonValue json_number(double n) {
+    JsonValue v;
+    v.type = JsonValue::NUMBER;
+    v.number_val = n;
+    return v;
+}
+
+JsonValue json_string(const std::string& s) {
+    JsonValue v;
+    v.type = JsonValue::STRING;
+    v.string_val = s;
+    return v;
+}
+
+JsonValue json_array(std::vector<JsonValue> elems) {
+    JsonValue v;
+    v.type = JsonValue::ARRAY;
+    v.array_val = std::move(elems);
+    return v;
+}
+
+JsonValue json_object(std::map<std::string, JsonValue> pairs) {
+    JsonValue v;
+    v.type = JsonValue::OBJECT;
+    v.object_val = std::move(pairs);
+    return v;
+}
