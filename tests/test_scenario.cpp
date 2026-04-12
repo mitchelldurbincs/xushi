@@ -3,8 +3,14 @@
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <string>
 
 static const char* kInvalidScenarioPath = "tests/tmp_invalid_scenario.json";
+
+static void write_temp_scenario(const char* path, const char* json) {
+    std::ofstream out(path);
+    out << json;
+}
 
 static void test_load_default() {
     Scenario s = load_scenario("scenarios/default.json");
@@ -15,7 +21,7 @@ static void test_load_default() {
     CHECK(s.obstacles.size() == 1, "obstacle count");
     CHECK(s.obstacles[0].min.x == 45.0f, "obstacle min.x");
     CHECK(s.entities.size() == 3, "entity count");
-    CHECK(s.entities[0].type == "drone", "first entity type");
+    CHECK(s.entities[0].role == ScenarioEntity::Role::Drone, "first entity role");
     CHECK(s.entities[2].velocity.x == 1.0f, "target velocity");
     CHECK(s.channel.base_latency_ticks == 3, "channel base_latency");
     CHECK(std::fabs(s.channel.loss_probability - 0.1f) < 0.01f, "channel loss");
@@ -34,6 +40,77 @@ static void test_missing_file() {
     try { load_scenario("nonexistent.json"); }
     catch (const std::runtime_error&) { caught = true; }
     CHECK(caught, "error on missing file");
+}
+
+static void test_duplicate_drone_rejected() {
+    const char* path = "tests/tmp_duplicate_drone.json";
+    write_temp_scenario(path,
+        "{"
+        "\"seed\":1,"
+        "\"obstacles\":[],"
+        "\"entities\":["
+        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0]},"
+        "{\"id\":1,\"type\":\"drone\",\"pos\":[1,0],\"vel\":[0,0]},"
+        "{\"id\":2,\"type\":\"ground\",\"pos\":[0,1],\"vel\":[0,0]},"
+        "{\"id\":3,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0]}"
+        "]"
+        "}");
+
+    bool caught = false;
+    try {
+        load_scenario(path);
+    } catch (const std::runtime_error& e) {
+        caught = std::string(e.what()).find("duplicate role 'drone'") != std::string::npos;
+    }
+    CHECK(caught, "duplicate drone rejected");
+    std::remove(path);
+}
+
+static void test_duplicate_ground_rejected() {
+    const char* path = "tests/tmp_duplicate_ground.json";
+    write_temp_scenario(path,
+        "{"
+        "\"seed\":1,"
+        "\"obstacles\":[],"
+        "\"entities\":["
+        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0]},"
+        "{\"id\":1,\"type\":\"ground\",\"pos\":[1,0],\"vel\":[0,0]},"
+        "{\"id\":2,\"type\":\"ground\",\"pos\":[0,1],\"vel\":[0,0]},"
+        "{\"id\":3,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0]}"
+        "]"
+        "}");
+
+    bool caught = false;
+    try {
+        load_scenario(path);
+    } catch (const std::runtime_error& e) {
+        caught = std::string(e.what()).find("duplicate role 'ground'") != std::string::npos;
+    }
+    CHECK(caught, "duplicate ground rejected");
+    std::remove(path);
+}
+
+static void test_unknown_role_rejected() {
+    const char* path = "tests/tmp_unknown_role.json";
+    write_temp_scenario(path,
+        "{"
+        "\"seed\":1,"
+        "\"obstacles\":[],"
+        "\"entities\":["
+        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0]},"
+        "{\"id\":1,\"type\":\"ground\",\"pos\":[1,0],\"vel\":[0,0]},"
+        "{\"id\":2,\"type\":\"alien\",\"pos\":[5,5],\"vel\":[0,0]}"
+        "]"
+        "}");
+
+    bool caught = false;
+    try {
+        load_scenario(path);
+    } catch (const std::runtime_error& e) {
+        caught = std::string(e.what()).find("unknown entity role 'alien'") != std::string::npos;
+    }
+    CHECK(caught, "unknown role rejected");
+    std::remove(path);
 }
 
 static void test_belief_rate_units_per_second_keys() {
@@ -115,12 +192,16 @@ static void test_invalid_validations() {
     check_invalid_field("belief.uncertainty_growth_per_second", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": 10, \"uncertainty_growth\": -0.1, \"confidence_decay\": 0.05}", "belief.uncertainty_growth_per_second must be >= 0, got -0.1");
     check_invalid_field("belief.confidence_decay_per_second", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": 10, \"uncertainty_growth\": 0.5, \"confidence_decay\": -0.05}", "belief.confidence_decay_per_second must be >= 0, got -0.05");
 }
+}
 
 int main() {
     std::printf("Running scenario tests...\n");
     test_load_default();
     test_load_los_blocked();
     test_missing_file();
+    test_duplicate_drone_rejected();
+    test_duplicate_ground_rejected();
+    test_unknown_role_rejected();
     test_belief_rate_units_per_second_keys();
     test_invalid_validations();
     TEST_REPORT();

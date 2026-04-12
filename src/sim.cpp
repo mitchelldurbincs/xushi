@@ -42,9 +42,9 @@ SimResult run_scenario_headless(const Scenario& scn) {
     ScenarioEntity* ground = nullptr;
     std::vector<ScenarioEntity*> targets;
     for (auto& e : entities) {
-        if (e.type == "drone")  drone = &e;
-        if (e.type == "ground") ground = &e;
-        if (e.type == "target") targets.push_back(&e);
+        if (e.role == ScenarioEntity::Role::Drone)  drone = &e;
+        if (e.role == ScenarioEntity::Role::Ground) ground = &e;
+        if (e.role == ScenarioEntity::Role::Target) targets.push_back(&e);
     }
 
     if (!drone || !ground || targets.empty())

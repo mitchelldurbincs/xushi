@@ -32,6 +32,15 @@ void validate_positive(const std::string& path,
 
 } // namespace
 
+static ScenarioEntity::Role parse_entity_role(const std::string& role_str,
+                                              EntityId id) {
+    if (role_str == "drone") return ScenarioEntity::Role::Drone;
+    if (role_str == "ground") return ScenarioEntity::Role::Ground;
+    if (role_str == "target") return ScenarioEntity::Role::Target;
+    throw std::runtime_error("unknown entity role '" + role_str +
+                             "' for entity id " + std::to_string(id));
+}
+
 Scenario load_scenario(const std::string& path) {
     std::ifstream file(path);
     if (!file.is_open())
@@ -61,18 +70,40 @@ Scenario load_scenario(const std::string& path) {
     }
 
     // Entities
+    int drone_count = 0;
+    int ground_count = 0;
+    int target_count = 0;
+
     for (const auto& ent : root["entities"].as_array()) {
         ScenarioEntity e;
         e.id = static_cast<EntityId>(ent["id"].as_number());
-        e.type = ent["type"].as_string();
+        e.role = parse_entity_role(ent["type"].as_string(), e.id);
         const auto& p = ent["pos"].as_array();
         e.position = {static_cast<float>(p[0].as_number()),
                       static_cast<float>(p[1].as_number())};
         const auto& v = ent["vel"].as_array();
         e.velocity = {static_cast<float>(v[0].as_number()),
                       static_cast<float>(v[1].as_number())};
+
+        switch (e.role) {
+            case ScenarioEntity::Role::Drone:  ++drone_count; break;
+            case ScenarioEntity::Role::Ground: ++ground_count; break;
+            case ScenarioEntity::Role::Target: ++target_count; break;
+        }
+
         s.entities.push_back(e);
     }
+
+    if (drone_count == 0)
+        throw std::runtime_error("scenario validation failed: missing required role 'drone'");
+    if (drone_count > 1)
+        throw std::runtime_error("scenario validation failed: duplicate role 'drone' (expected exactly 1)");
+    if (ground_count == 0)
+        throw std::runtime_error("scenario validation failed: missing required role 'ground'");
+    if (ground_count > 1)
+        throw std::runtime_error("scenario validation failed: duplicate role 'ground' (expected exactly 1)");
+    if (target_count == 0)
+        throw std::runtime_error("scenario validation failed: missing required role 'target' (expected at least 1)");
 
     // Channel (optional)
     if (root.has("channel")) {
