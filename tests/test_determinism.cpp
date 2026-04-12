@@ -72,6 +72,29 @@ static void test_benchmark_determinism() {
     CHECK(all_match, "benchmark scenario deterministic");
 }
 
+static void test_task_verify_determinism() {
+    Scenario scn = load_scenario("scenarios/task_verify.json");
+
+    SimResult a = run_scenario_headless(scn);
+    SimResult b = run_scenario_headless(scn);
+
+    CHECK(!a.world_hashes.empty(), "task verify hashes produced");
+    CHECK(a.world_hashes.size() == b.world_hashes.size(), "task verify hash count");
+
+    bool all_match = true;
+    size_t count = std::min(a.world_hashes.size(), b.world_hashes.size());
+    for (size_t i = 0; i < count; ++i) {
+        if (a.world_hashes[i] != b.world_hashes[i]) {
+            all_match = false;
+            break;
+        }
+    }
+    CHECK(all_match, "task verify deterministic");
+    CHECK(a.tasks_assigned > 0, "task verify assigned tasks");
+    CHECK(a.tasks_assigned == b.tasks_assigned, "task verify same assignments");
+    CHECK(a.tasks_completed == b.tasks_completed, "task verify same completions");
+}
+
 static void test_mixed_era_determinism() {
     Scenario scn = load_scenario("scenarios/mixed_era.json");
 
@@ -145,5 +168,6 @@ int main() {
     test_multi_agent_determinism();
     test_waypoint_determinism();
     test_mixed_era_determinism();
+    test_task_verify_determinism();
     TEST_REPORT();
 }

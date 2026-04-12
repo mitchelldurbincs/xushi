@@ -129,6 +129,12 @@ Scenario load_scenario(const std::string& path) {
             }
         }
 
+        // Speed without waypoints (for task-directed entities)
+        if (e.waypoints.empty() && ent.has("speed")) {
+            e.speed = static_cast<float>(ent["speed"].as_number());
+            validate_positive(path, "entity speed", e.speed);
+        }
+
         if (e.can_sense)     ++sensor_count;
         if (e.can_track)     ++tracker_count;
         if (e.is_observable) ++observable_count;

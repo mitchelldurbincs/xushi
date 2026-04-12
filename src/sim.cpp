@@ -5,6 +5,7 @@
 #include "belief.h"
 #include "movement.h"
 #include "policy.h"
+#include "task.h"
 #include "rng.h"
 
 uint64_t compute_world_hash(const std::vector<ScenarioEntity>& entities,
@@ -65,9 +66,24 @@ SimResult run_scenario_headless(const Scenario& scn) {
     NullPolicy default_policy;
     Policy* policy = &default_policy;
 
+    std::map<EntityId, Task> active_tasks;
+    constexpr float kTaskArrivalRadius = 5.0f;
+    constexpr float kTaskConfidenceThreshold = 0.5f;
+
     for (int tick = 0; tick < scn.ticks; ++tick) {
-        // Movement (policy can override for sensor entities)
+        // Movement — task override > policy override > default
         for (auto& e : entities) {
+            auto task_it = active_tasks.find(e.id);
+            if (task_it != active_tasks.end()) {
+                Vec2 diff = task_it->second.target_position - e.position;
+                float dist = diff.length();
+                float step = e.speed * scn.dt;
+                if (dist > 1e-9f && step < dist)
+                    e.position = e.position + diff * (step / dist);
+                else if (dist > 1e-9f)
+                    e.position = task_it->second.target_position;
+                continue;
+            }
             if (e.can_sense) {
                 auto it = beliefs.find(e.id);
                 if (it != beliefs.end()) {
@@ -87,11 +103,11 @@ SimResult run_scenario_headless(const Scenario& scn) {
             update_movement(e, scn.dt, rng);
         }
 
-        // Sensing — each sensor observes all observables, broadcasts to all trackers
+        // Sensing
         for (auto* sensor : sensors) {
             std::vector<EntityId> detected_targets;
             for (auto* obs_ent : observables) {
-                if (sensor->id == obs_ent->id) continue;  // skip self-sensing
+                if (sensor->id == obs_ent->id) continue;
                 result.stats.sensors_updated++;
                 result.stats.rays_cast++;
 
@@ -104,7 +120,6 @@ SimResult run_scenario_headless(const Scenario& scn) {
                     result.stats.detections_generated++;
                     detected_targets.push_back(obs_ent->id);
 
-                    // Direct self-observation for sensor-trackers
                     if (sensor->can_track)
                         beliefs[sensor->id].update(obs, tick);
 
@@ -124,7 +139,6 @@ SimResult run_scenario_headless(const Scenario& scn) {
                 }
             }
 
-            // Negative evidence: sensor looked but didn't see — reduce confidence
             if (sensor->can_track) {
                 beliefs[sensor->id].apply_negative_evidence(
                     sensor->position, scn.max_sensor_range, map,
@@ -143,7 +157,7 @@ SimResult run_scenario_headless(const Scenario& scn) {
                 tracked_before[gid].push_back(t.target);
         }
 
-        // Belief — route messages to correct ground's belief
+        // Belief
         for (const auto& msg : delivered) {
             result.stats.messages_delivered++;
             auto it = beliefs.find(msg.receiver);
@@ -153,7 +167,7 @@ SimResult run_scenario_headless(const Scenario& scn) {
         for (auto& [gid, belief] : beliefs)
             belief.decay(tick, scn.dt, scn.belief);
 
-        // Aggregate stats across all grounds
+        // Aggregate stats
         int total_active = 0;
         for (auto& [gid, belief] : beliefs) {
             total_active += static_cast<int>(belief.tracks.size());
@@ -163,6 +177,76 @@ SimResult run_scenario_headless(const Scenario& scn) {
             }
         }
         result.stats.tracks_active = total_active;
+
+        // Task completion
+        std::vector<EntityId> completed_tasks;
+        for (const auto& [eid, task] : active_tasks) {
+            // Find entity
+            ScenarioEntity* assigned = nullptr;
+            for (auto& e : entities) {
+                if (e.id == eid) { assigned = &e; break; }
+            }
+            if (!assigned) continue;
+
+            Vec2 diff = task.target_position - assigned->position;
+            float dist_sq = diff.x * diff.x + diff.y * diff.y;
+            if (dist_sq > kTaskArrivalRadius * kTaskArrivalRadius) continue;
+
+            // Arrived — check if target was corroborated
+            bool corroborated = false;
+            for (auto& [gid, belief] : beliefs) {
+                const Track* trk = belief.find_track(task.target_id);
+                if (trk && trk->status == TrackStatus::FRESH) {
+                    corroborated = true;
+                    break;
+                }
+            }
+            completed_tasks.push_back(eid);
+            result.tasks_completed++;
+        }
+        for (EntityId eid : completed_tasks)
+            active_tasks.erase(eid);
+
+        // Task assignment — assign VERIFY for stale tracks
+        for (auto* tracker_ent : trackers) {
+            auto& belief = beliefs[tracker_ent->id];
+            for (const auto& trk : belief.tracks) {
+                if (trk.status != TrackStatus::STALE) continue;
+                if (trk.confidence >= kTaskConfidenceThreshold) continue;
+
+                // Check if any entity already tasked for this target
+                bool already_tasked = false;
+                for (const auto& [eid, t] : active_tasks) {
+                    if (t.target_id == trk.target) { already_tasked = true; break; }
+                }
+                if (already_tasked) continue;
+
+                // Find nearest idle entity with can_sense
+                ScenarioEntity* best = nullptr;
+                float best_dist = 1e9f;
+                for (auto& e : entities) {
+                    if (!e.can_sense) continue;
+                    if (e.is_observable && !e.can_track && !e.can_sense) continue;
+                    if (active_tasks.count(e.id)) continue;
+                    float d = (e.position - trk.estimated_position).length();
+                    if (d < best_dist) {
+                        best = &e;
+                        best_dist = d;
+                    }
+                }
+
+                if (best) {
+                    Task task;
+                    task.type = Task::Type::VERIFY;
+                    task.assigned_to = best->id;
+                    task.target_id = trk.target;
+                    task.target_position = trk.estimated_position;
+                    task.assigned_tick = tick;
+                    active_tasks[best->id] = task;
+                    result.tasks_assigned++;
+                }
+            }
+        }
 
         // World hash every 10 ticks
         if (tick % 10 == 0)

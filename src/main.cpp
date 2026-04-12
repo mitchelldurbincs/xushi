@@ -11,6 +11,7 @@
 #include "stats.h"
 #include "movement.h"
 #include "policy.h"
+#include "task.h"
 #include "invariants.h"
 #include <chrono>
 #include <cstdio>
@@ -88,10 +89,26 @@ int main(int argc, char* argv[]) {
     NullPolicy default_policy;
     Policy* policy = &default_policy;
 
+    std::map<EntityId, Task> active_tasks;
+    constexpr float kTaskArrivalRadius = 5.0f;
+    constexpr float kTaskConfidenceThreshold = 0.5f;
+
     for (int tick = 0; tick < scn.ticks; ++tick) {
-        // Movement (policy can override for sensor entities)
+        // Movement — task override > policy override > default
         auto t0 = Clock::now();
         for (auto& e : entities) {
+            auto task_it = active_tasks.find(e.id);
+            if (task_it != active_tasks.end()) {
+                Vec2 diff = task_it->second.target_position - e.position;
+                float dist = diff.length();
+                float step = e.speed * scn.dt;
+                if (dist > 1e-9f && step < dist)
+                    e.position = e.position + diff * (step / dist);
+                else if (dist > 1e-9f)
+                    e.position = task_it->second.target_position;
+                replay.log(replay_entity_position(tick, e.id, e.position));
+                continue;
+            }
             if (e.can_sense) {
                 auto it = beliefs.find(e.id);
                 if (it != beliefs.end()) {
@@ -233,6 +250,79 @@ int main(int argc, char* argv[]) {
             }
         }
         stats.tracks_active = total_active;
+
+        // Task completion
+        std::vector<EntityId> completed_tasks;
+        for (const auto& [eid, task] : active_tasks) {
+            ScenarioEntity* assigned = nullptr;
+            for (auto& e : entities) {
+                if (e.id == eid) { assigned = &e; break; }
+            }
+            if (!assigned) continue;
+
+            Vec2 diff = task.target_position - assigned->position;
+            float dist_sq = diff.x * diff.x + diff.y * diff.y;
+            if (dist_sq > kTaskArrivalRadius * kTaskArrivalRadius) continue;
+
+            bool corroborated = false;
+            for (auto& [gid, belief] : beliefs) {
+                const Track* trk = belief.find_track(task.target_id);
+                if (trk && trk->status == TrackStatus::FRESH) {
+                    corroborated = true;
+                    break;
+                }
+            }
+            completed_tasks.push_back(eid);
+            replay.log(replay_task_completed(tick, eid, task.target_id, corroborated));
+            if (!bench_mode)
+                std::printf("tick %3d  TASK COMPLETED: %s %u %s target %u\n",
+                            tick, assigned->role_name.c_str(), eid,
+                            corroborated ? "CORROBORATED" : "NOT FOUND", task.target_id);
+        }
+        for (EntityId eid : completed_tasks)
+            active_tasks.erase(eid);
+
+        // Task assignment — assign VERIFY for stale, low-confidence tracks
+        for (auto* tracker_ent : trackers) {
+            auto& belief = beliefs[tracker_ent->id];
+            for (const auto& trk : belief.tracks) {
+                if (trk.status != TrackStatus::STALE) continue;
+                if (trk.confidence >= kTaskConfidenceThreshold) continue;
+
+                bool already_tasked = false;
+                for (const auto& [eid, t] : active_tasks) {
+                    if (t.target_id == trk.target) { already_tasked = true; break; }
+                }
+                if (already_tasked) continue;
+
+                ScenarioEntity* best = nullptr;
+                float best_dist = 1e9f;
+                for (auto& e : entities) {
+                    if (!e.can_sense) continue;
+                    if (active_tasks.count(e.id)) continue;
+                    float d = (e.position - trk.estimated_position).length();
+                    if (d < best_dist) {
+                        best = &e;
+                        best_dist = d;
+                    }
+                }
+
+                if (best) {
+                    Task task;
+                    task.type = Task::Type::VERIFY;
+                    task.assigned_to = best->id;
+                    task.target_id = trk.target;
+                    task.target_position = trk.estimated_position;
+                    task.assigned_tick = tick;
+                    active_tasks[best->id] = task;
+                    replay.log(replay_task_assigned(tick, task));
+                    if (!bench_mode)
+                        std::printf("tick %3d  TASK ASSIGNED: %s %u -> VERIFY target %u at (%.1f,%.1f)\n",
+                                    tick, best->role_name.c_str(), best->id,
+                                    trk.target, trk.estimated_position.x, trk.estimated_position.y);
+                }
+            }
+        }
 
         // Replay logging for comms/belief
         t0 = Clock::now();
