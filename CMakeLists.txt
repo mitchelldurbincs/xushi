@@ -32,7 +32,11 @@ else()
 endif()
 
 if(RAYLIB_AVAILABLE)
-    add_executable(xushi_viewer viewer/main.cpp viewer/viewer.cpp)
+    add_executable(xushi_viewer
+        viewer/main.cpp
+        viewer/viewer_load.cpp
+        viewer/viewer_update.cpp
+        viewer/viewer_draw.cpp)
     target_link_libraries(xushi_viewer xushi_core)
     target_include_directories(xushi_viewer PRIVATE viewer)
     if(raylib_FOUND)
