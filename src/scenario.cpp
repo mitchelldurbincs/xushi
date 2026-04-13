@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_set>
 
 namespace {
 
@@ -64,10 +65,15 @@ Scenario load_scenario(const std::string& path) {
     int sensor_count = 0;
     int tracker_count = 0;
     int observable_count = 0;
+    std::unordered_set<EntityId> seen_ids;
 
     for (const auto& ent : root["entities"].as_array()) {
         ScenarioEntity e;
         e.id = static_cast<EntityId>(ent["id"].as_number());
+        if (!seen_ids.insert(e.id).second) {
+            throw std::runtime_error(
+                "invalid scenario '" + path + "': duplicate entity id " + std::to_string(e.id));
+        }
         e.role_name = ent["type"].as_string();
         const auto& p = ent["pos"].as_array();
         e.position = {static_cast<float>(p[0].as_number()),
