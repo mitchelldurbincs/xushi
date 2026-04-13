@@ -26,6 +26,11 @@ void viewer_update(ViewerState& vs) {
         vs.show_waypoint_paths = !vs.show_waypoint_paths;
     if (IsKeyPressed(KEY_D))
         vs.show_designations = !vs.show_designations;
+    if (IsKeyPressed(KEY_C)) {
+        vs.render_mode = (vs.render_mode == ViewerState::RenderMode::GroundTruth)
+            ? ViewerState::RenderMode::COP
+            : ViewerState::RenderMode::GroundTruth;
+    }
 
     // Zoom
     float wheel = GetMouseWheelMove();

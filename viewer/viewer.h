@@ -28,6 +28,11 @@ struct TickFrame {
 };
 
 struct ViewerState {
+    enum class RenderMode {
+        GroundTruth,
+        COP,
+    };
+
     // Scenario data
     Scenario scenario;
     std::string scenario_path;
@@ -55,6 +60,9 @@ struct ViewerState {
     bool show_sensor_ranges = true;
     bool show_waypoint_paths = true;
     bool show_designations = true;
+
+    // View mode
+    RenderMode render_mode = RenderMode::GroundTruth;
 };
 
 struct WorldBounds {
