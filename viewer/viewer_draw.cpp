@@ -174,10 +174,13 @@ static void draw_entities(const ViewerState& vs) {
     float dt = vs.scenario.dt;
     int tick = vs.current_tick;
 
-    // Get entity positions from replay if available for this tick
+    // Get entity positions and vitality from replay if available for this tick
     const std::map<EntityId, Vec2>* tick_positions = nullptr;
-    if (tick >= 0 && tick < static_cast<int>(vs.frames.size()))
+    const std::map<EntityId, int>* tick_vitality = nullptr;
+    if (tick >= 0 && tick < static_cast<int>(vs.frames.size())) {
         tick_positions = &vs.frames[tick].entity_positions;
+        tick_vitality = &vs.frames[tick].entity_vitality;
+    }
 
     for (const auto& ent : vs.scenario.entities) {
         float wx, wy;
@@ -199,6 +202,16 @@ static void draw_entities(const ViewerState& vs) {
 
         float r = std::max(4.0f, 5.0f * vs.zoom / 3.0f);
 
+        // Check vitality
+        int current_vitality = ent.vitality;
+        int max_vitality = ent.max_vitality;
+        if (tick_vitality) {
+            auto vit_it = tick_vitality->find(ent.id);
+            if (vit_it != tick_vitality->end())
+                current_vitality = vit_it->second;
+        }
+        bool is_dead = current_vitality <= 0 && max_vitality > 0;
+
         // Color by capability: blue=sensor, green=tracker, red=observable, purple=multi
         Color fill, outline;
         int cap_count = (int)ent.can_sense + (int)ent.can_track + (int)ent.is_observable;
@@ -219,14 +232,50 @@ static void draw_entities(const ViewerState& vs) {
             outline = {180, 180, 180, 255};
         }
 
+        // Dim dead entities
+        if (is_dead) {
+            fill = {80, 80, 80, 120};
+            outline = {120, 120, 120, 120};
+            // Draw X over dead entity
+            DrawLineEx({pos.x - r, pos.y - r}, {pos.x + r, pos.y + r}, 2.0f, {255, 60, 60, 180});
+            DrawLineEx({pos.x + r, pos.y - r}, {pos.x - r, pos.y + r}, 2.0f, {255, 60, 60, 180});
+        }
+
         DrawCircleV(pos, r, fill);
         DrawCircleLinesV(pos, r, outline);
 
+        // Health bar (only for entities with vitality tracking)
+        if (max_vitality > 0 && !is_dead) {
+            float bar_w = r * 4.0f;
+            float bar_h = 3.0f;
+            float bar_x = pos.x - bar_w / 2.0f;
+            float bar_y = pos.y + r + 4.0f;
+            float frac = static_cast<float>(current_vitality) / static_cast<float>(max_vitality);
+            frac = std::max(0.0f, std::min(1.0f, frac));
+
+            // Background
+            DrawRectangle(static_cast<int>(bar_x), static_cast<int>(bar_y),
+                          static_cast<int>(bar_w), static_cast<int>(bar_h), {40, 40, 40, 200});
+            // Fill: green->yellow->red based on health
+            Color bar_col;
+            if (frac > 0.5f)
+                bar_col = {50, 200, 80, 230};
+            else if (frac > 0.25f)
+                bar_col = {240, 200, 50, 230};
+            else
+                bar_col = {240, 60, 60, 230};
+            DrawRectangle(static_cast<int>(bar_x), static_cast<int>(bar_y),
+                          static_cast<int>(bar_w * frac), static_cast<int>(bar_h), bar_col);
+        }
+
         // Label
-        const char* label = TextFormat("%s %u", ent.role_name.c_str(), ent.id);
+        const char* label = is_dead
+            ? TextFormat("%s %u [DEAD]", ent.role_name.c_str(), ent.id)
+            : TextFormat("%s %u", ent.role_name.c_str(), ent.id);
         int font_size = 10;
+        Color label_col = is_dead ? Color{150, 60, 60, 180} : Color{200, 200, 200, 200};
         DrawText(label, static_cast<int>(pos.x - MeasureText(label, font_size) / 2),
-                 static_cast<int>(pos.y - r - 14), font_size, {200, 200, 200, 200});
+                 static_cast<int>(pos.y - r - 14), font_size, label_col);
     }
 }
 
@@ -371,6 +420,59 @@ static void draw_designations(const ViewerState& vs) {
                  static_cast<int>(pos.x + sz + 3),
                  static_cast<int>(pos.y - 5),
                  8, col);
+    }
+}
+
+// --- Combat effects ---
+
+static void draw_combat_effects(const ViewerState& vs) {
+    if (vs.current_tick < 0 || vs.current_tick >= static_cast<int>(vs.frames.size()))
+        return;
+
+    const auto& frame = vs.frames[vs.current_tick];
+
+    for (const auto& eff : frame.effect_resolved) {
+        if (!eff.has("track_target") || !eff.has("actor")) continue;
+        EntityId target_id = static_cast<EntityId>(eff["track_target"].as_int());
+        EntityId actor_id = static_cast<EntityId>(eff["actor"].as_int());
+        bool hit = eff.has("hit") && eff["hit"].as_bool();
+
+        // Find target position
+        auto tgt_it = frame.entity_positions.find(target_id);
+        auto act_it = frame.entity_positions.find(actor_id);
+        if (tgt_it == frame.entity_positions.end()) continue;
+
+        Vector2 tgt_screen = world_to_screen(tgt_it->second.x, tgt_it->second.y, vs);
+
+        if (hit) {
+            // Red burst around target
+            float burst_r = std::max(10.0f, 12.0f * vs.zoom / 3.0f);
+            DrawCircleLinesV(tgt_screen, burst_r, {255, 50, 50, 200});
+            DrawCircleLinesV(tgt_screen, burst_r * 0.6f, {255, 100, 50, 160});
+
+            // Damage text
+            if (eff.has("vitality_delta")) {
+                int delta = eff["vitality_delta"].as_int();
+                const char* dmg_text = TextFormat("%d", delta);
+                DrawText(dmg_text,
+                         static_cast<int>(tgt_screen.x + 10),
+                         static_cast<int>(tgt_screen.y - 16),
+                         12, {255, 80, 80, 230});
+            }
+        } else {
+            // Miss indicator: gray "MISS" text
+            DrawText("MISS",
+                     static_cast<int>(tgt_screen.x + 10),
+                     static_cast<int>(tgt_screen.y - 16),
+                     10, {180, 180, 180, 160});
+        }
+
+        // Draw firing line from actor to target
+        if (act_it != frame.entity_positions.end()) {
+            Vector2 act_screen = world_to_screen(act_it->second.x, act_it->second.y, vs);
+            Color line_col = hit ? Color{255, 80, 50, 140} : Color{180, 180, 180, 80};
+            DrawLineEx(act_screen, tgt_screen, 2.0f, line_col);
+        }
     }
 }
 
@@ -551,6 +653,7 @@ void viewer_draw(const ViewerState& vs) {
     if (vs.show_designations)
         draw_designations(vs);
     draw_entities(vs);
+    draw_combat_effects(vs);
     draw_messages(vs);
     draw_ui(vs);
 }

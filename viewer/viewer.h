@@ -19,12 +19,16 @@ struct TickFrame {
     std::vector<JsonValue> track_expired;
     std::vector<JsonValue> messages; // sent, delivered, dropped
     std::vector<JsonValue> action_resolved; // action request results
+    std::vector<JsonValue> effect_resolved; // combat effects (hits, misses)
     std::map<EntityId, Vec2> entity_positions; // from entity_pos events (waypoint entities)
     std::string world_hash;
     JsonValue stats_snapshot; // optional; NUL when unavailable for this tick
 
     // Computed during replay loading: active designations at this tick
     std::vector<DesignationOverlay> active_designations;
+
+    // Computed during replay loading: entity vitality at this tick
+    std::map<EntityId, int> entity_vitality;
 };
 
 struct ViewerState {

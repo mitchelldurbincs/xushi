@@ -199,6 +199,8 @@ void viewer_load(ViewerState& vs, const std::string& replay_path) {
                 vs.frames[tick].stats_snapshot = ev;
             } else if (type == "action_resolved") {
                 vs.frames[tick].action_resolved.push_back(ev);
+            } else if (type == "effect_resolved") {
+                vs.frames[tick].effect_resolved.push_back(ev);
             }
         } catch (const std::exception& ex) {
             parse_warnings.push_back(ex.what());
@@ -253,6 +255,23 @@ void viewer_load(ViewerState& vs, const std::string& replay_path) {
             }
 
             vs.frames[tick].active_designations = active;
+        }
+    }
+
+    // Compute per-tick entity vitality by walking effect_resolved events
+    {
+        std::map<EntityId, int> vitality;
+        for (const auto& ent : vs.scenario.entities)
+            vitality[ent.id] = ent.vitality;
+
+        for (int tick = 0; tick < vs.total_ticks; ++tick) {
+            for (const auto& ev : vs.frames[tick].effect_resolved) {
+                if (!ev.has("track_target") || !ev.has("vitality_after")) continue;
+                EntityId target = static_cast<EntityId>(ev["track_target"].as_int());
+                int vit_after = ev["vitality_after"].as_int();
+                vitality[target] = vit_after;
+            }
+            vs.frames[tick].entity_vitality = vitality;
         }
     }
 
