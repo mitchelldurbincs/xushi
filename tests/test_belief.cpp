@@ -212,8 +212,7 @@ static void test_negative_evidence_reduces_identity_confidence(TestContext& ctx)
 }
 
 int main() {
-    TestContext ctx;
-    std::printf("Running belief tests...\n");
+    return run_test_suite("belief", [](TestContext& ctx) {
     test_new_observation_creates_fresh_track(ctx);
     test_duplicate_observation_updates_not_duplicates(ctx);
     test_fresh_to_stale_transition(ctx);
@@ -230,5 +229,5 @@ int main() {
     test_identity_confidence_takes_max(ctx);
     test_identity_confidence_decays_when_stale(ctx);
     test_negative_evidence_reduces_identity_confidence(ctx);
-    return ctx.report_and_exit_code();
+    });
 }

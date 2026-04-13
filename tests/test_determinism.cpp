@@ -243,8 +243,7 @@ static void test_patrol_policy_determinism(TestContext& ctx) {
 }
 
 int main() {
-    TestContext ctx;
-    std::printf("Running determinism tests...\n");
+    return run_test_suite("determinism", [](TestContext& ctx) {
     test_same_seed_same_hashes(ctx);
     test_same_seed_same_counters(ctx);
     test_different_seed_different_hashes(ctx);
@@ -257,5 +256,5 @@ int main() {
     test_branch_waypoint_determinism(ctx);
     test_distance_comms_determinism(ctx);
     test_patrol_policy_determinism(ctx);
-    return ctx.report_and_exit_code();
+    });
 }

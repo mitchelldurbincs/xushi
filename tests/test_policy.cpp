@@ -76,12 +76,11 @@ static void test_patrol_unknown_entity_returns_nullopt(TestContext& ctx) {
 }
 
 int main() {
-    TestContext ctx;
-    std::printf("Running policy tests...\n");
+    return run_test_suite("policy", [](TestContext& ctx) {
     test_null_policy_returns_nullopt(ctx);
     test_patrol_returns_first_waypoint(ctx);
     test_patrol_advances_on_arrival(ctx);
     test_patrol_loops(ctx);
     test_patrol_unknown_entity_returns_nullopt(ctx);
-    return ctx.report_and_exit_code();
+    });
 }
