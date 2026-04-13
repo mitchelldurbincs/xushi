@@ -4,6 +4,7 @@
 #include "types.h"
 #include "sensing.h"
 #include "belief.h"
+#include "action.h"
 #include "scenario.h"
 #include "stats.h"
 #include "task.h"
@@ -75,6 +76,9 @@ inline JsonValue replay_track_update(int tick, EntityId owner, const Track& trk)
                                 json_number(trk.estimated_position.y)})},
         {"conf",   json_number(trk.confidence)},
         {"unc",    json_number(trk.uncertainty)},
+        {"class_id",   json_number(trk.class_id)},
+        {"id_conf",    json_number(trk.identity_confidence)},
+        {"corr_count", json_number(trk.corroboration_count)},
     });
 }
 
@@ -139,6 +143,19 @@ inline JsonValue replay_task_completed(int tick, EntityId entity, EntityId targe
         {"entity",       json_number(entity)},
         {"target",       json_number(target)},
         {"corroborated", json_bool(corroborated)},
+    });
+}
+
+inline JsonValue replay_action_resolved(int tick, const ActionResult& r) {
+    return json_object({
+        {"type",          json_string("action_resolved")},
+        {"tick",          json_number(tick)},
+        {"actor",         json_number(r.request.actor)},
+        {"action",        json_string(action_type_str(r.request.type))},
+        {"track_target",  json_number(r.request.track_target)},
+        {"desig_kind",    json_string(designation_kind_str(r.request.desig_kind))},
+        {"allowed",       json_bool(r.allowed)},
+        {"failure_mask",  json_number(r.failure_mask)},
     });
 }
 

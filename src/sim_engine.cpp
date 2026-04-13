@@ -2,6 +2,7 @@
 #include "constants.h"
 #include "sensing.h"
 #include "invariants.h"
+#include <algorithm>
 #include <cmath>
 
 // FNV-1a hash of entity positions and belief state.
@@ -28,6 +29,9 @@ uint64_t SimEngine::compute_world_hash() const {
             mix(&t.estimated_position.y, sizeof(float));
             mix(&t.confidence, sizeof(float));
             mix(&t.uncertainty, sizeof(float));
+            mix(&t.class_id, sizeof(t.class_id));
+            mix(&t.identity_confidence, sizeof(float));
+            mix(&t.corroboration_count, sizeof(t.corroboration_count));
         }
     }
     return h;
@@ -58,6 +62,10 @@ void SimEngine::init(const Scenario& scn, Policy* policy) {
     active_tasks_.clear();
     tasks_assigned_ = 0;
     tasks_completed_ = 0;
+
+    pending_actions_.clear();
+    designations_.clear();
+    next_designation_id_ = 1;
 }
 
 void SimEngine::step(int tick, TickHooks& hooks) {
@@ -133,7 +141,9 @@ void SimEngine::step(int tick, TickHooks& hooks) {
             bool detected = sense(map_, sensor->position, sensor->id,
                                   obs_ent->position, obs_ent->id,
                                   scn.max_sensor_range, tick, rng_, obs,
-                                  scn.perception.miss_rate);
+                                  scn.perception.miss_rate,
+                                  obs_ent->class_id,
+                                  scn.perception.class_confusion_rate);
 
             if (detected) {
                 stats_.detections_generated++;
@@ -260,6 +270,9 @@ void SimEngine::step(int tick, TickHooks& hooks) {
         }
     }
 
+    // ��─ Action adjudication ──
+    adjudicate_actions(tick, hooks);
+
     // ── Task completion ──
     std::vector<EntityId> completed_tasks;
     for (const auto& [eid, task] : active_tasks_) {
@@ -333,4 +346,77 @@ void SimEngine::step(int tick, TickHooks& hooks) {
         hooks.on_world_hash(tick, hash);
         hooks.on_stats_snapshot(tick, stats_);
     }
+}
+
+void SimEngine::submit_action(const ActionRequest& req) {
+    pending_actions_.push_back(req);
+}
+
+void SimEngine::adjudicate_actions(int tick, TickHooks& hooks) {
+    for (const auto& req : pending_actions_) {
+        ActionResult result;
+        result.request = req;
+        result.tick = tick;
+
+        // Look up actor's belief state
+        auto belief_it = beliefs_.find(req.actor);
+
+        switch (req.type) {
+        case ActionType::DesignateTrack: {
+            // Check that actor has a belief and the track exists
+            if (belief_it == beliefs_.end() ||
+                !belief_it->second.find_track(req.track_target)) {
+                result.allowed = false;
+                result.failure_mask = static_cast<uint32_t>(GateFailureReason::TrackNotFound);
+            } else {
+                result.allowed = true;
+                DesignationRecord rec;
+                rec.designation_id = next_designation_id_++;
+                rec.issuer = req.actor;
+                rec.track_target = req.track_target;
+                rec.kind = req.desig_kind;
+                rec.priority = req.priority;
+                rec.created_tick = tick;
+                rec.expires_tick = tick + kDefaultDesignationTTL;
+                designations_.push_back(rec);
+            }
+            break;
+        }
+        case ActionType::ClearDesignation: {
+            bool found = false;
+            for (auto it = designations_.begin(); it != designations_.end(); ++it) {
+                if (it->track_target == req.track_target &&
+                    it->issuer == req.actor &&
+                    it->kind == req.desig_kind) {
+                    designations_.erase(it);
+                    found = true;
+                    break;
+                }
+            }
+            result.allowed = found;
+            if (!found)
+                result.failure_mask = static_cast<uint32_t>(GateFailureReason::TrackNotFound);
+            break;
+        }
+        case ActionType::EngageTrack: {
+            result.allowed = false;
+            result.failure_mask = static_cast<uint32_t>(GateFailureReason::NoCapability);
+            break;
+        }
+        case ActionType::RequestBDA: {
+            result.allowed = false;
+            result.failure_mask = static_cast<uint32_t>(GateFailureReason::NoCapability);
+            break;
+        }
+        }
+
+        hooks.on_action_resolved(tick, result);
+    }
+    pending_actions_.clear();
+
+    // Expire stale designations
+    designations_.erase(
+        std::remove_if(designations_.begin(), designations_.end(),
+            [tick](const DesignationRecord& d) { return tick >= d.expires_tick; }),
+        designations_.end());
 }

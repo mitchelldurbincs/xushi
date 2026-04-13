@@ -197,6 +197,8 @@ void viewer_load(ViewerState& vs, const std::string& replay_path) {
                 vs.frames[tick].world_hash = get_required_string(ev, "hash", context);
             } else if (type == "stats") {
                 vs.frames[tick].stats_snapshot = ev;
+            } else if (type == "action_resolved") {
+                vs.frames[tick].action_resolved.push_back(ev);
             }
         } catch (const std::exception& ex) {
             parse_warnings.push_back(ex.what());
@@ -207,6 +209,50 @@ void viewer_load(ViewerState& vs, const std::string& replay_path) {
         std::fprintf(stderr, "viewer_load: %zu parse warning(s)\n", parse_warnings.size());
         for (const auto& warning : parse_warnings) {
             std::fprintf(stderr, "  - %s\n", warning.c_str());
+        }
+    }
+
+    // Compute active designations per frame by walking events chronologically
+    {
+        std::vector<DesignationOverlay> active;
+        for (int tick = 0; tick < vs.total_ticks; ++tick) {
+            // Remove expired designations
+            active.erase(
+                std::remove_if(active.begin(), active.end(),
+                    [tick](const DesignationOverlay& d) { return tick >= d.expires_tick; }),
+                active.end());
+
+            // Process action_resolved events for this tick
+            for (const auto& ev : vs.frames[tick].action_resolved) {
+                if (!ev.has("allowed")) continue;
+                bool allowed = ev["allowed"].as_bool();
+                if (!allowed) continue;
+                if (!ev.has("action")) continue;
+                std::string action = ev["action"].as_string();
+
+                EntityId track_target = 0;
+                if (ev.has("track_target"))
+                    track_target = static_cast<EntityId>(ev["track_target"].as_number());
+                EntityId actor = 0;
+                if (ev.has("actor"))
+                    actor = static_cast<EntityId>(ev["actor"].as_number());
+
+                if (action == "DESIGNATE_TRACK") {
+                    std::string kind = "OBSERVE";
+                    if (ev.has("desig_kind"))
+                        kind = ev["desig_kind"].as_string();
+                    active.push_back({track_target, kind, actor, tick + 30});
+                } else if (action == "CLEAR_DESIGNATION") {
+                    for (auto it = active.begin(); it != active.end(); ++it) {
+                        if (it->track_target == track_target && it->issuer == actor) {
+                            active.erase(it);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            vs.frames[tick].active_designations = active;
         }
     }
 

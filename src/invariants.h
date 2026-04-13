@@ -33,6 +33,10 @@ inline void check_belief_invariants(const BeliefState& bs, const char* context) 
         check_confidence_range(t.confidence, context);
         check_uncertainty_positive(t.uncertainty, context);
         assert(t.status != TrackStatus::EXPIRED && "expired track not removed");
+        assert(t.identity_confidence >= 0.0f && t.identity_confidence <= 1.0f
+               && "identity_confidence out of [0,1] range");
+        assert(t.corroboration_count >= 0 && "negative corroboration_count");
+        assert(t.class_id >= 0 && "negative class_id");
     }
     (void)context;
 }

@@ -87,6 +87,8 @@ Scenario load_scenario(const std::string& path) {
         if (ent.has("can_track"))     e.can_track     = ent["can_track"].as_bool();
         if (ent.has("is_observable")) e.is_observable = ent["is_observable"].as_bool();
 
+        if (ent.has("class_id"))      e.class_id = ent["class_id"].as_int();
+
         // Waypoints (optional)
         if (ent.has("waypoints")) {
             const auto& wps = ent["waypoints"].as_array();

@@ -21,6 +21,8 @@ struct ScenarioEntity {
     bool can_track = false;      // maintains BeliefState (receiver)
     bool is_observable = false;  // can be sensed by sensors
 
+    int class_id = 0;           // truth class for identity/classification
+
     // Waypoint movement (optional; empty = use constant velocity)
     std::vector<Vec2> waypoints;
     float speed = 0.0f;

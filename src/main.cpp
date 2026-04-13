@@ -117,6 +117,15 @@ struct CLIHooks : TickHooks {
         replay->log(replay_track_expired(tick, owner, target));
     }
 
+    void on_action_resolved(int tick, const ActionResult& result) override {
+        replay->log(replay_action_resolved(tick, result));
+        if (!bench_mode)
+            std::printf("tick %3d  ACTION: %s actor=%u target=%u %s\n",
+                        tick, action_type_str(result.request.type),
+                        result.request.actor, result.request.track_target,
+                        result.allowed ? "ACCEPTED" : "REJECTED");
+    }
+
     void on_belief_invariant_check(const BeliefState& belief) override {
         check_belief_invariants(belief, "after belief decay");
     }
@@ -219,6 +228,27 @@ int main(int argc, char* argv[]) {
 
     for (int tick = 0; tick < scn.ticks; ++tick) {
         hooks.sensing_replay_us = 0;
+
+        // Auto-designate: for each tracker, designate fresh tracks without existing designations
+        for (const auto& [eid, belief] : engine.get_beliefs()) {
+            for (const auto& trk : belief.tracks) {
+                if (trk.status != TrackStatus::FRESH) continue;
+                bool already = false;
+                for (const auto& d : engine.get_designations()) {
+                    if (d.track_target == trk.target && d.issuer == eid) {
+                        already = true; break;
+                    }
+                }
+                if (already) continue;
+                ActionRequest req;
+                req.actor = eid;
+                req.type = ActionType::DesignateTrack;
+                req.track_target = trk.target;
+                req.desig_kind = DesignationKind::Observe;
+                req.priority = 1;
+                engine.submit_action(req);
+            }
+        }
 
         auto t0 = Clock::now();
         engine.step(tick, hooks);

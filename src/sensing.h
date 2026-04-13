@@ -11,7 +11,8 @@ struct Observation {
     Vec2 estimated_position;
     float uncertainty;          // noise radius (meters)
     float confidence;           // 0..1
-    int class_id = 0;           // target class (0 = unknown)
+    int class_id = 0;              // target class (0 = unknown)
+    float identity_confidence = 0.0f; // confidence in target identity/classification
     bool is_false_positive = false;
 };
 
@@ -23,4 +24,6 @@ bool sense(const Map& map,
            Vec2 target_pos, EntityId target_id,
            float max_range, int tick,
            Rng& rng, Observation& out,
-           float miss_rate = 0.0f);
+           float miss_rate = 0.0f,
+           int target_class_id = 0,
+           float class_confusion_rate = 0.0f);

@@ -64,6 +64,42 @@ static void test_different_seeds_differ() {
           a.estimated_position.y != b.estimated_position.y, "different seeds -> different observations");
 }
 
+static void test_class_id_carried_through() {
+    Map map;
+    Rng rng(1);
+    Observation obs{};
+    bool detected = sense(map, {0, 0}, 0, {10, 0}, 1, 50.0f, 0, rng, obs,
+                          /*miss_rate=*/0.0f, /*target_class_id=*/5, /*class_confusion_rate=*/0.0f);
+    CHECK(detected, "detected");
+    CHECK(obs.class_id == 5, "class_id matches truth when no confusion");
+    CHECK(obs.identity_confidence > 0.0f, "identity_confidence is positive");
+}
+
+static void test_class_confusion_always_confuses_at_rate_1() {
+    Map map;
+    int confused_count = 0;
+    for (int i = 0; i < 100; ++i) {
+        Rng rng(42 + i);
+        Observation obs{};
+        bool detected = sense(map, {0, 0}, 0, {10, 0}, 1, 50.0f, 0, rng, obs,
+                              0.0f, /*target_class_id=*/3, /*class_confusion_rate=*/1.0f);
+        if (detected && obs.class_id != 3) confused_count++;
+    }
+    CHECK(confused_count == 100, "100% confusion rate always produces wrong class");
+}
+
+static void test_class_confusion_never_confuses_at_rate_0() {
+    Map map;
+    for (int i = 0; i < 100; ++i) {
+        Rng rng(42 + i);
+        Observation obs{};
+        bool detected = sense(map, {0, 0}, 0, {10, 0}, 1, 50.0f, 0, rng, obs,
+                              0.0f, /*target_class_id=*/3, /*class_confusion_rate=*/0.0f);
+        CHECK(detected, "should detect");
+        CHECK(obs.class_id == 3, "0% confusion rate preserves class");
+    }
+}
+
 int main() {
     std::printf("Running sensing tests...\n");
     test_blocked_los_no_detection();
@@ -72,5 +108,8 @@ int main() {
     test_noise_within_bounds();
     test_determinism_same_seed();
     test_different_seeds_differ();
+    test_class_id_carried_through();
+    test_class_confusion_always_confuses_at_rate_1();
+    test_class_confusion_never_confuses_at_rate_0();
     TEST_REPORT();
 }

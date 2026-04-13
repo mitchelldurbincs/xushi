@@ -6,6 +6,12 @@
 // is scaled by this factor (10% growth) to reflect increased doubt.
 static constexpr float kNegativeEvidenceUncertaintyGrowth = 1.1f;
 
+static int popcount32(uint32_t x) {
+    x = x - ((x >> 1) & 0x55555555u);
+    x = (x & 0x33333333u) + ((x >> 2) & 0x33333333u);
+    return static_cast<int>(((x + (x >> 4)) & 0x0F0F0F0Fu) * 0x01010101u >> 24);
+}
+
 Track* BeliefState::find_track(EntityId target) {
     for (auto& t : tracks) {
         if (t.target == target) return &t;
@@ -29,16 +35,29 @@ void BeliefState::update(const Observation& obs, int current_tick) {
         existing->last_update_tick = current_tick;
         existing->last_decay_tick = current_tick;
         existing->status = TrackStatus::FRESH;
+
+        // Identity: keep the stronger classification
+        if (obs.identity_confidence > existing->identity_confidence) {
+            existing->class_id = obs.class_id;
+            existing->identity_confidence = obs.identity_confidence;
+        }
+        // Corroboration: accumulate independent sources
+        existing->source_mask |= (1u << (obs.observer % 32));
+        existing->corroboration_count = popcount32(existing->source_mask);
     } else {
-        tracks.push_back({
-            obs.target,
-            obs.estimated_position,
-            obs.confidence,
-            obs.uncertainty,
-            current_tick,
-            current_tick,
-            TrackStatus::FRESH
-        });
+        Track t{};
+        t.target = obs.target;
+        t.estimated_position = obs.estimated_position;
+        t.confidence = obs.confidence;
+        t.uncertainty = obs.uncertainty;
+        t.last_update_tick = current_tick;
+        t.last_decay_tick = current_tick;
+        t.status = TrackStatus::FRESH;
+        t.class_id = obs.class_id;
+        t.identity_confidence = obs.identity_confidence;
+        t.source_mask = 1u << (obs.observer % 32);
+        t.corroboration_count = 1;
+        tracks.push_back(t);
     }
 }
 
@@ -62,6 +81,9 @@ void BeliefState::decay(int current_tick, float dt, const BeliefConfig& config) 
                 t.confidence = std::max(
                     0.0f,
                     t.confidence - config.confidence_decay_per_second * stale_seconds_elapsed);
+                t.identity_confidence = std::max(
+                    0.0f,
+                    t.identity_confidence - config.confidence_decay_per_second * stale_seconds_elapsed);
                 t.uncertainty +=
                     config.uncertainty_growth_per_second * stale_seconds_elapsed;
             }
@@ -96,6 +118,7 @@ void BeliefState::apply_negative_evidence(Vec2 observer_pos, float sensor_range,
 
         // Track was in sensor coverage but not detected — reduce confidence
         t.confidence *= (1.0f - factor);
+        t.identity_confidence *= (1.0f - factor);
         t.uncertainty *= kNegativeEvidenceUncertaintyGrowth;
     }
 }

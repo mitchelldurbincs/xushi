@@ -9,7 +9,9 @@ bool sense(const Map& map,
            Vec2 target_pos, EntityId target_id,
            float max_range, int tick,
            Rng& rng, Observation& out,
-           float miss_rate) {
+           float miss_rate,
+           int target_class_id,
+           float class_confusion_rate) {
 
     Vec2 diff = target_pos - observer_pos;
     float range = diff.length();
@@ -36,6 +38,15 @@ bool sense(const Map& map,
     out.estimated_position = target_pos + noise;
     out.uncertainty = noise_stddev;
     out.confidence = 1.0f - range_frac;
+
+    // Identity: class_id from truth, possibly confused; identity_confidence tracks confidence
+    if (class_confusion_rate > 0.0f && rng.uniform() < class_confusion_rate) {
+        // Confused: assign a different class (offset by 1, wrapping is fine for gameplay)
+        out.class_id = target_class_id + 1;
+    } else {
+        out.class_id = target_class_id;
+    }
+    out.identity_confidence = out.confidence;
 
     return true;
 }

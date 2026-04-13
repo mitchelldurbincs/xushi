@@ -6,14 +6,25 @@
 #include <vector>
 #include <map>
 
+struct DesignationOverlay {
+    EntityId track_target;
+    std::string kind;   // "OBSERVE", "ENGAGE", etc.
+    EntityId issuer;
+    int expires_tick;
+};
+
 struct TickFrame {
     std::vector<JsonValue> detections;
     std::vector<JsonValue> track_updates;
     std::vector<JsonValue> track_expired;
     std::vector<JsonValue> messages; // sent, delivered, dropped
+    std::vector<JsonValue> action_resolved; // action request results
     std::map<EntityId, Vec2> entity_positions; // from entity_pos events (waypoint entities)
     std::string world_hash;
     JsonValue stats_snapshot; // optional; NUL when unavailable for this tick
+
+    // Computed during replay loading: active designations at this tick
+    std::vector<DesignationOverlay> active_designations;
 };
 
 struct ViewerState {
@@ -43,6 +54,7 @@ struct ViewerState {
     // Overlay toggles
     bool show_sensor_ranges = true;
     bool show_waypoint_paths = true;
+    bool show_designations = true;
 };
 
 struct WorldBounds {

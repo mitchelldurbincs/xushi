@@ -4,6 +4,7 @@
 #include "constants.h"
 #include "stats.h"
 #include "belief.h"
+#include "action.h"
 #include "comm.h"
 #include "movement.h"
 #include "policy.h"
@@ -42,6 +43,9 @@ struct TickHooks {
     virtual void on_task_assigned(int /*tick*/, const Task& /*task*/, const ScenarioEntity& /*entity*/) {}
     virtual void on_task_completed(int /*tick*/, EntityId /*entity*/, EntityId /*target*/, bool /*corroborated*/) {}
 
+    // Actions
+    virtual void on_action_resolved(int /*tick*/, const ActionResult& /*result*/) {}
+
     // Periodic snapshots
     virtual void on_world_hash(int /*tick*/, uint64_t /*hash*/) {}
     virtual void on_stats_snapshot(int /*tick*/, const SystemStats& /*stats*/) {}
@@ -59,6 +63,10 @@ class SimEngine {
 public:
     void init(const Scenario& scn, Policy* policy = nullptr);
     void step(int tick, TickHooks& hooks);
+
+    // Action queue — policies/controllers push requests, engine adjudicates
+    void submit_action(const ActionRequest& req);
+    const std::vector<DesignationRecord>& get_designations() const { return designations_; }
 
     // Accessors for result extraction
     const std::vector<ScenarioEntity>& get_entities() const { return entities_; }
@@ -89,4 +97,9 @@ private:
     int tasks_assigned_ = 0;
     int tasks_completed_ = 0;
 
+    // Action system
+    std::vector<ActionRequest> pending_actions_;
+    std::vector<DesignationRecord> designations_;
+    uint64_t next_designation_id_ = 1;
+    void adjudicate_actions(int tick, TickHooks& hooks);
 };

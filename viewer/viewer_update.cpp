@@ -24,6 +24,8 @@ void viewer_update(ViewerState& vs) {
         vs.show_sensor_ranges = !vs.show_sensor_ranges;
     if (IsKeyPressed(KEY_W))
         vs.show_waypoint_paths = !vs.show_waypoint_paths;
+    if (IsKeyPressed(KEY_D))
+        vs.show_designations = !vs.show_designations;
 
     // Zoom
     float wheel = GetMouseWheelMove();

@@ -325,6 +325,55 @@ static void draw_tracks(const ViewerState& vs) {
     }
 }
 
+// --- Designations ---
+
+static Color designation_color(const std::string& kind) {
+    if (kind == "OBSERVE")          return {80, 200, 240, 200};   // cyan
+    if (kind == "VERIFY")           return {240, 220, 60, 200};   // yellow
+    if (kind == "ENGAGE")           return {240, 60, 60, 200};    // red
+    if (kind == "MAINTAIN_CUSTODY") return {60, 200, 100, 200};   // green
+    if (kind == "BDA")              return {200, 80, 240, 200};   // magenta
+    return {180, 180, 180, 200};                                   // gray fallback
+}
+
+static void draw_designations(const ViewerState& vs) {
+    if (vs.current_tick < 0 || vs.current_tick >= static_cast<int>(vs.frames.size()))
+        return;
+
+    const auto& frame = vs.frames[vs.current_tick];
+
+    for (const auto& desig : frame.active_designations) {
+        // Find matching track position from track_updates
+        float px = 0.0f, py = 0.0f;
+        bool found = false;
+        for (const auto& trk : frame.track_updates) {
+            if (!trk.has("target")) continue;
+            EntityId tid = static_cast<EntityId>(trk["target"].as_number());
+            if (tid == desig.track_target) {
+                found = try_get_xy_array(trk, "pos", px, py);
+                break;
+            }
+        }
+        if (!found) continue;
+
+        Vector2 pos = world_to_screen(px, py, vs);
+        Color col = designation_color(desig.kind);
+
+        // Diamond shape around track
+        float sz = 10.0f;
+        DrawLineEx({pos.x, pos.y - sz}, {pos.x + sz, pos.y}, 1.5f, col);
+        DrawLineEx({pos.x + sz, pos.y}, {pos.x, pos.y + sz}, 1.5f, col);
+        DrawLineEx({pos.x, pos.y + sz}, {pos.x - sz, pos.y}, 1.5f, col);
+        DrawLineEx({pos.x - sz, pos.y}, {pos.x, pos.y - sz}, 1.5f, col);
+
+        // Label
+        DrawText(desig.kind.c_str(),
+                 static_cast<int>(pos.x + sz + 3),
+                 static_cast<int>(pos.y - 5),
+                 8, col);
+    }
+}
+
 // --- Messages & expired tracks ---
 
 static void draw_messages(const ViewerState& vs) {
@@ -448,7 +497,7 @@ static void draw_ui(const ViewerState& vs) {
     // Legend (top right)
     int lx = static_cast<int>(sw - 190);
     int ly = 10;
-    DrawRectangle(lx - 5, ly - 5, 190, 120, {25, 25, 30, 200});
+    DrawRectangle(lx - 5, ly - 5, 190, 138, {25, 25, 30, 200});
     DrawCircle(lx + 6, ly + 8, 5, {50, 130, 240, 255});
     DrawText("Drone", lx + 16, ly + 2, 12, {180, 180, 190, 200});
     DrawRectangle(lx + 1, ly + 21, 10, 10, {50, 180, 100, 255});
@@ -469,9 +518,21 @@ static void draw_ui(const ViewerState& vs) {
     DrawText(vs.show_waypoint_paths ? "Waypoint path [W]" : "Waypoint path [W] OFF",
              lx + 16, ly + 94, 12,
              vs.show_waypoint_paths ? Color{180, 180, 190, 200} : Color{100, 100, 110, 150});
+    // Diamond icon for designation
+    {
+        float dx = static_cast<float>(lx + 6);
+        float dy = static_cast<float>(ly + 114);
+        DrawLineEx({dx, dy - 5}, {dx + 5, dy}, 1.0f, {80, 200, 240, 200});
+        DrawLineEx({dx + 5, dy}, {dx, dy + 5}, 1.0f, {80, 200, 240, 200});
+        DrawLineEx({dx, dy + 5}, {dx - 5, dy}, 1.0f, {80, 200, 240, 200});
+        DrawLineEx({dx - 5, dy}, {dx, dy - 5}, 1.0f, {80, 200, 240, 200});
+    }
+    DrawText(vs.show_designations ? "Designation [D]" : "Designation [D] OFF",
+             lx + 16, ly + 108, 12,
+             vs.show_designations ? Color{180, 180, 190, 200} : Color{100, 100, 110, 150});
 
     // Controls hint
-    DrawText("SPACE: play/pause  ARROWS: step  +/-: speed  SCROLL: zoom  RIGHT-DRAG: pan  R: ranges  W: waypoints",
+    DrawText("SPACE: play/pause  ARROWS: step  +/-: speed  SCROLL: zoom  RIGHT-DRAG: pan  R: ranges  W: waypoints  D: desig",
              10, 10, 10, {120, 120, 130, 160});
 }
 
@@ -487,6 +548,8 @@ void viewer_draw(const ViewerState& vs) {
         draw_waypoint_paths(vs);
     draw_detections(vs);
     draw_tracks(vs);
+    if (vs.show_designations)
+        draw_designations(vs);
     draw_entities(vs);
     draw_messages(vs);
     draw_ui(vs);

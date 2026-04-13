@@ -43,6 +43,13 @@ inline constexpr float kTaskArrivalRadius = 5.0f;
 inline constexpr float kTaskConfidenceThreshold = 0.5f;
 
 // ---------------------------------------------------------------------------
+// Designation system
+// ---------------------------------------------------------------------------
+
+// Default time-to-live (ticks) for designation records before they expire.
+inline constexpr int kDefaultDesignationTTL = 30;
+
+// ---------------------------------------------------------------------------
 // Search initialization
 // ---------------------------------------------------------------------------
 

@@ -2,6 +2,7 @@
 
 #include "types.h"
 #include "sensing.h"
+#include <cstdint>
 #include <vector>
 
 enum class TrackStatus { FRESH, STALE, EXPIRED };
@@ -22,6 +23,12 @@ struct Track {
     int last_update_tick;
     int last_decay_tick;
     TrackStatus status;
+
+    // Identity and corroboration fields (for targeting/effects gating)
+    int class_id = 0;                  // believed class (0 = unknown)
+    float identity_confidence = 0.0f;  // confidence in identity/classification
+    int corroboration_count = 0;       // number of independent sources
+    uint32_t source_mask = 0;          // bitmask of observer entity IDs (mod 32)
 };
 
 struct BeliefState {
