@@ -46,17 +46,14 @@ static void draw_grid(const ViewerState& vs) {
     float start_x = std::floor(world_left / spacing) * spacing;
     float start_y = std::floor(world_top / spacing) * spacing;
 
-    Color grid_color = {40, 40, 40, 255};
+    Color cross_color = {50, 50, 60, 255};
 
     for (float x = start_x; x <= world_right; x += spacing) {
-        Vector2 top = world_to_screen(x, world_top, vs);
-        Vector2 bot = world_to_screen(x, world_bottom, vs);
-        DrawLineV(top, bot, grid_color);
-    }
-    for (float y = start_y; y <= world_bottom; y += spacing) {
-        Vector2 left = world_to_screen(world_left, y, vs);
-        Vector2 right = world_to_screen(world_right, y, vs);
-        DrawLineV(left, right, grid_color);
+        for (float y = start_y; y <= world_bottom; y += spacing) {
+            Vector2 pt = world_to_screen(x, y, vs);
+            DrawLineEx({pt.x - 2, pt.y}, {pt.x + 2, pt.y}, 1.0f, cross_color);
+            DrawLineEx({pt.x, pt.y - 2}, {pt.x, pt.y + 2}, 1.0f, cross_color);
+        }
     }
 }
 
@@ -69,8 +66,8 @@ static void draw_obstacles(const ViewerState& vs) {
         float w = br.x - tl.x;
         float h = br.y - tl.y;
         DrawRectangle(static_cast<int>(tl.x), static_cast<int>(tl.y),
-                      static_cast<int>(w), static_cast<int>(h), {70, 70, 80, 255});
-        DrawRectangleLinesEx({tl.x, tl.y, w, h}, 1.0f, {100, 100, 110, 255});
+                      static_cast<int>(w), static_cast<int>(h), {15, 15, 20, 200});
+        DrawRectangleLinesEx({tl.x, tl.y, w, h}, 1.0f, {60, 60, 70, 255});
     }
 }
 
@@ -105,8 +102,13 @@ static void draw_sensor_ranges(const ViewerState& vs) {
         Vector2 pos = world_to_screen(wx, wy, vs);
         float screen_range = range * vs.zoom;
 
-        DrawCircleV(pos, screen_range, {50, 130, 240, 20});
-        DrawCircleLinesV(pos, screen_range, {50, 130, 240, 60});
+        DrawCircleLinesV(pos, screen_range, {0, 255, 255, 100});
+        // Cardinal ticks
+        float tick_len = 6.0f;
+        DrawLineEx({pos.x - screen_range - tick_len, pos.y}, {pos.x - screen_range + tick_len, pos.y}, 1.5f, {0, 255, 255, 200});
+        DrawLineEx({pos.x + screen_range - tick_len, pos.y}, {pos.x + screen_range + tick_len, pos.y}, 1.5f, {0, 255, 255, 200});
+        DrawLineEx({pos.x, pos.y - screen_range - tick_len}, {pos.x, pos.y - screen_range + tick_len}, 1.5f, {0, 255, 255, 200});
+        DrawLineEx({pos.x, pos.y + screen_range - tick_len}, {pos.x, pos.y + screen_range + tick_len}, 1.5f, {0, 255, 255, 200});
     }
 }
 
@@ -121,20 +123,20 @@ static void draw_waypoint_paths(const ViewerState& vs) {
         // Choose color based on entity type
         Color path_color;
         if (ent.is_observable)
-            path_color = {220, 60, 60, 80};
+            path_color = {255, 60, 60, 150};
         else if (ent.can_sense)
-            path_color = {50, 130, 240, 80};
+            path_color = {0, 255, 255, 150};
         else
-            path_color = {150, 150, 150, 80};
+            path_color = {150, 150, 150, 150};
 
-        Color dot_color = {path_color.r, path_color.g, path_color.b, 140};
+        Color dot_color = {path_color.r, path_color.g, path_color.b, 200};
 
         // Draw path segments
         for (int i = 0; i < n; ++i) {
             Vector2 from = world_to_screen(ent.waypoints[i].x, ent.waypoints[i].y, vs);
 
-            // Draw waypoint dot
-            DrawCircleV(from, 3.0f, dot_color);
+            // Draw waypoint square instead of dot
+            DrawRectangleV({from.x - 2, from.y - 2}, {4, 4}, dot_color);
 
             // Check for branch point
             auto bp_it = ent.branch_points.find(i);
@@ -147,7 +149,7 @@ static void draw_waypoint_paths(const ViewerState& vs) {
                     }
                 }
                 // Draw a small diamond to mark the branch point
-                DrawCircleLinesV(from, 5.0f, {255, 200, 80, 120});
+                DrawPoly(from, 4, 5.0f, 0.0f, {255, 200, 80, 120});
             } else {
                 // Normal sequential segment
                 int next = i + 1;
@@ -164,7 +166,7 @@ static void draw_waypoint_paths(const ViewerState& vs) {
 
         // Label first waypoint with index
         Vector2 wp0 = world_to_screen(ent.waypoints[0].x, ent.waypoints[0].y, vs);
-        DrawText("wp0", static_cast<int>(wp0.x + 5), static_cast<int>(wp0.y - 10), 8, dot_color);
+        DrawText("[WP0]", static_cast<int>(wp0.x + 5), static_cast<int>(wp0.y - 10), 8, dot_color);
     }
 }
 
@@ -199,31 +201,34 @@ static void draw_entities(const ViewerState& vs) {
 
         float r = std::max(4.0f, 5.0f * vs.zoom / 3.0f);
 
-        // Color by capability: blue=sensor, green=tracker, red=observable, purple=multi
-        Color fill, outline;
+        Color color;
         int cap_count = (int)ent.can_sense + (int)ent.can_track + (int)ent.is_observable;
         if (cap_count > 1) {
-            fill = {180, 100, 220, 255};    // purple: multi-capability
-            outline = {210, 140, 255, 255};
+            color = {255, 0, 255, 255};    // magenta: multi-capability
         } else if (ent.can_sense) {
-            fill = {50, 130, 240, 255};     // blue: sensor
-            outline = {80, 160, 255, 255};
+            color = {0, 255, 255, 255};     // cyan: sensor
         } else if (ent.can_track) {
-            fill = {50, 180, 100, 255};     // green: tracker
-            outline = {80, 210, 130, 255};
+            color = {50, 255, 100, 255};     // lime: tracker
         } else if (ent.is_observable) {
-            fill = {220, 60, 60, 255};      // red: observable
-            outline = {255, 100, 100, 255};
+            color = {255, 60, 60, 255};      // red: observable
         } else {
-            fill = {150, 150, 150, 255};    // gray: no capabilities
-            outline = {180, 180, 180, 255};
+            color = {180, 180, 180, 255};    // gray: no capabilities
         }
 
-        DrawCircleV(pos, r, fill);
-        DrawCircleLinesV(pos, r, outline);
+        // Draw shapes instead of filled circles
+        if (ent.is_observable && !ent.can_sense && !ent.can_track) {
+            // Diamond
+            DrawLineEx({pos.x, pos.y - r}, {pos.x + r, pos.y}, 1.5f, color);
+            DrawLineEx({pos.x + r, pos.y}, {pos.x, pos.y + r}, 1.5f, color);
+            DrawLineEx({pos.x, pos.y + r}, {pos.x - r, pos.y}, 1.5f, color);
+            DrawLineEx({pos.x - r, pos.y}, {pos.x, pos.y - r}, 1.5f, color);
+        } else {
+            // Square for sensors/trackers
+            DrawRectangleLinesEx({pos.x - r, pos.y - r, r * 2.0f, r * 2.0f}, 1.5f, color);
+        }
 
         // Label
-        const char* label = TextFormat("%s %u", ent.role_name.c_str(), ent.id);
+        const char* label = TextFormat("[%s-%u]", ent.role_name.c_str(), ent.id);
         int font_size = 10;
         DrawText(label, static_cast<int>(pos.x - MeasureText(label, font_size) / 2),
                  static_cast<int>(pos.y - r - 14), font_size, {200, 200, 200, 200});
@@ -272,13 +277,14 @@ static void draw_detections(const ViewerState& vs) {
 
         // LOS line (only when observer is valid)
         if (draw_los) {
-            DrawLineEx(observer_screen, est_screen, 1.5f, {80, 220, 80, 140});
+            DrawLineEx(observer_screen, est_screen, 1.0f, {0, 255, 255, 80});
         } else {
             missing_observer_count++;
         }
 
-        // Detection marker
-        DrawCircleV(est_screen, 3.0f, {80, 220, 80, 200});
+        // Detection marker (cross)
+        DrawLineEx({est_screen.x - 3, est_screen.y}, {est_screen.x + 3, est_screen.y}, 1.0f, {0, 255, 255, 200});
+        DrawLineEx({est_screen.x, est_screen.y - 3}, {est_screen.x, est_screen.y + 3}, 1.0f, {0, 255, 255, 200});
     }
 
     (void)missing_observer_count;
@@ -307,32 +313,44 @@ static void draw_tracks(const ViewerState& vs) {
 
         unsigned char alpha = static_cast<unsigned char>(conf * 200 + 30);
 
-        Color fill, outline;
+        Color color;
         if (status == "FRESH") {
-            fill = {255, 180, 50, static_cast<unsigned char>(alpha / 3)};
-            outline = {255, 200, 80, alpha};
+            color = {255, 200, 0, alpha};
         } else {
-            fill = {200, 100, 30, static_cast<unsigned char>(alpha / 4)};
-            outline = {200, 120, 50, alpha};
+            color = {200, 120, 0, alpha};
         }
 
-        DrawCircleV(pos, screen_unc, fill);
-        DrawCircleLinesV(pos, screen_unc, outline);
+        // Uncertainty brackets instead of circle
+        float s = screen_unc;
+        float cap = std::min(s * 0.3f, 10.0f); // Bracket size
+        
+        // Top-left
+        DrawLineEx({pos.x - s, pos.y - s}, {pos.x - s + cap, pos.y - s}, 1.5f, color);
+        DrawLineEx({pos.x - s, pos.y - s}, {pos.x - s, pos.y - s + cap}, 1.5f, color);
+        // Top-right
+        DrawLineEx({pos.x + s, pos.y - s}, {pos.x + s - cap, pos.y - s}, 1.5f, color);
+        DrawLineEx({pos.x + s, pos.y - s}, {pos.x + s, pos.y - s + cap}, 1.5f, color);
+        // Bottom-left
+        DrawLineEx({pos.x - s, pos.y + s}, {pos.x - s + cap, pos.y + s}, 1.5f, color);
+        DrawLineEx({pos.x - s, pos.y + s}, {pos.x - s, pos.y + s - cap}, 1.5f, color);
+        // Bottom-right
+        DrawLineEx({pos.x + s, pos.y + s}, {pos.x + s - cap, pos.y + s}, 1.5f, color);
+        DrawLineEx({pos.x + s, pos.y + s}, {pos.x + s, pos.y + s - cap}, 1.5f, color);
 
         // Cross at center
-        DrawLineEx({pos.x - 4, pos.y}, {pos.x + 4, pos.y}, 1.0f, outline);
-        DrawLineEx({pos.x, pos.y - 4}, {pos.x, pos.y + 4}, 1.0f, outline);
+        DrawLineEx({pos.x - 3, pos.y}, {pos.x + 3, pos.y}, 1.0f, color);
+        DrawLineEx({pos.x, pos.y - 3}, {pos.x, pos.y + 3}, 1.0f, color);
     }
 }
 
 // --- Designations ---
 
 static Color designation_color(const std::string& kind) {
-    if (kind == "OBSERVE")          return {80, 200, 240, 200};   // cyan
-    if (kind == "VERIFY")           return {240, 220, 60, 200};   // yellow
-    if (kind == "ENGAGE")           return {240, 60, 60, 200};    // red
-    if (kind == "MAINTAIN_CUSTODY") return {60, 200, 100, 200};   // green
-    if (kind == "BDA")              return {200, 80, 240, 200};   // magenta
+    if (kind == "OBSERVE")          return {0, 255, 255, 200};   // cyan
+    if (kind == "VERIFY")           return {255, 200, 0, 200};   // yellow
+    if (kind == "ENGAGE")           return {255, 60, 60, 200};    // red
+    if (kind == "MAINTAIN_CUSTODY") return {50, 255, 100, 200};   // green
+    if (kind == "BDA")              return {255, 0, 255, 200};   // magenta
     return {180, 180, 180, 200};                                   // gray fallback
 }
 
@@ -359,18 +377,28 @@ static void draw_designations(const ViewerState& vs) {
         Vector2 pos = world_to_screen(px, py, vs);
         Color col = designation_color(desig.kind);
 
-        // Diamond shape around track
-        float sz = 10.0f;
-        DrawLineEx({pos.x, pos.y - sz}, {pos.x + sz, pos.y}, 1.5f, col);
-        DrawLineEx({pos.x + sz, pos.y}, {pos.x, pos.y + sz}, 1.5f, col);
-        DrawLineEx({pos.x, pos.y + sz}, {pos.x - sz, pos.y}, 1.5f, col);
-        DrawLineEx({pos.x - sz, pos.y}, {pos.x, pos.y - sz}, 1.5f, col);
+        // Sharp diamond brackets
+        float sz = 12.0f;
+        float cap = 4.0f;
+        // Top point
+        DrawLineEx({pos.x, pos.y - sz}, {pos.x + cap, pos.y - sz + cap}, 1.5f, col);
+        DrawLineEx({pos.x, pos.y - sz}, {pos.x - cap, pos.y - sz + cap}, 1.5f, col);
+        // Bottom point
+        DrawLineEx({pos.x, pos.y + sz}, {pos.x + cap, pos.y + sz - cap}, 1.5f, col);
+        DrawLineEx({pos.x, pos.y + sz}, {pos.x - cap, pos.y + sz - cap}, 1.5f, col);
+        // Left point
+        DrawLineEx({pos.x - sz, pos.y}, {pos.x - sz + cap, pos.y - cap}, 1.5f, col);
+        DrawLineEx({pos.x - sz, pos.y}, {pos.x - sz + cap, pos.y + cap}, 1.5f, col);
+        // Right point
+        DrawLineEx({pos.x + sz, pos.y}, {pos.x + sz - cap, pos.y - cap}, 1.5f, col);
+        DrawLineEx({pos.x + sz, pos.y}, {pos.x + sz - cap, pos.y + cap}, 1.5f, col);
 
         // Label
-        DrawText(desig.kind.c_str(),
+        std::string label = "[" + desig.kind + "]";
+        DrawText(label.c_str(),
                  static_cast<int>(pos.x + sz + 3),
                  static_cast<int>(pos.y - 5),
-                 8, col);
+                 10, col);
     }
 }
 
@@ -389,9 +417,9 @@ static void draw_messages(const ViewerState& vs) {
         std::string type = msg["type"].as_string();
         Color col;
         const char* icon;
-        if (type == "msg_sent")      { col = {100, 200, 255, 200}; icon = "MSG SENT"; }
-        else if (type == "msg_delivered") { col = {100, 255, 100, 200}; icon = "MSG DELIVERED"; }
-        else                              { col = {255, 100, 100, 200}; icon = "MSG DROPPED"; }
+        if (type == "msg_sent")      { col = {0, 255, 255, 200}; icon = "// MSG_SENT"; }
+        else if (type == "msg_delivered") { col = {50, 255, 100, 200}; icon = "// MSG_DELIVERED"; }
+        else                              { col = {255, 60, 60, 200}; icon = "// MSG_DROPPED"; }
 
         DrawText(icon, 10, static_cast<int>(sh - 80 - y_offset * 16), 10, col);
         y_offset++;
@@ -400,50 +428,70 @@ static void draw_messages(const ViewerState& vs) {
     for (const auto& expired : frame.track_expired) {
         int owner = expired.int_or("owner", -1);
         int target = expired.int_or("target", -1);
-        const char* txt = TextFormat("TRACK EXPIRED %d -> %d", owner, target);
-        DrawText(txt, 10, static_cast<int>(sh - 80 - y_offset * 16), 10, {255, 180, 120, 210});
+        const char* txt = TextFormat("// TRK_EXPIRED [OWN:%d TGT:%d]", owner, target);
+        DrawText(txt, 10, static_cast<int>(sh - 80 - y_offset * 16), 10, {255, 200, 0, 210});
         y_offset++;
     }
 }
 
 // --- HUD / UI overlay ---
 
+static void draw_panel(float x, float y, float w, float h) {
+    DrawRectangle(static_cast<int>(x), static_cast<int>(y), static_cast<int>(w), static_cast<int>(h), {10, 10, 15, 200});
+    DrawRectangleLinesEx({x, y, w, h}, 1.0f, {40, 40, 50, 255});
+    // Corner accents
+    float c = 6.0f;
+    Color accent = {100, 100, 120, 255};
+    DrawLineEx({x, y}, {x + c, y}, 2.0f, accent);
+    DrawLineEx({x, y}, {x, y + c}, 2.0f, accent);
+    DrawLineEx({x + w - c, y}, {x + w, y}, 2.0f, accent);
+    DrawLineEx({x + w, y}, {x + w, y + c}, 2.0f, accent);
+    DrawLineEx({x, y + h - c}, {x, y + h}, 2.0f, accent);
+    DrawLineEx({x, y + h}, {x + c, y + h}, 2.0f, accent);
+    DrawLineEx({x + w - c, y + h}, {x + w, y + h}, 2.0f, accent);
+    DrawLineEx({x + w, y + h - c}, {x + w, y + h}, 2.0f, accent);
+}
+
 static void draw_ui(const ViewerState& vs) {
     float sw = static_cast<float>(GetScreenWidth());
     float sh = static_cast<float>(GetScreenHeight());
 
     // Bottom bar background
-    DrawRectangle(0, static_cast<int>(sh - 60), static_cast<int>(sw), 60, {25, 25, 30, 240});
-    DrawLineEx({0, sh - 60}, {sw, sh - 60}, 1.0f, {60, 60, 70, 255});
+    DrawRectangle(0, static_cast<int>(sh - 60), static_cast<int>(sw), 60, {10, 10, 12, 240});
+    DrawLineEx({0, sh - 60}, {sw, sh - 60}, 1.0f, {40, 40, 50, 255});
 
     // Slider
-    float slider_x = 80.0f;
-    float slider_w = sw - 160.0f;
-    float slider_y = sh - 35.0f;
+    float slider_x = 90.0f;
+    float slider_w = sw - 180.0f;
+    float slider_y = sh - 30.0f;
     float frac = (vs.total_ticks > 1) ? static_cast<float>(vs.current_tick) / (vs.total_ticks - 1) : 0;
 
     // Track
-    DrawRectangle(static_cast<int>(slider_x), static_cast<int>(slider_y - 2),
-                  static_cast<int>(slider_w), 4, {60, 60, 70, 255});
+    DrawLineEx({slider_x, slider_y}, {slider_x + slider_w, slider_y}, 1.0f, {60, 60, 70, 255});
+    
     // Filled portion
-    DrawRectangle(static_cast<int>(slider_x), static_cast<int>(slider_y - 2),
-                  static_cast<int>(slider_w * frac), 4, {80, 160, 255, 255});
-    // Handle
+    DrawLineEx({slider_x, slider_y}, {slider_x + slider_w * frac, slider_y}, 1.0f, {0, 255, 255, 255});
+    
+    // Handle (Caret)
     float handle_x = slider_x + slider_w * frac;
-    DrawCircle(static_cast<int>(handle_x), static_cast<int>(slider_y), 7, {80, 160, 255, 255});
+    DrawLineEx({handle_x, slider_y - 8}, {handle_x, slider_y + 8}, 2.0f, {0, 255, 255, 255});
+    DrawLineEx({handle_x - 4, slider_y}, {handle_x, slider_y - 4}, 1.5f, {0, 255, 255, 255});
+    DrawLineEx({handle_x + 4, slider_y}, {handle_x, slider_y - 4}, 1.5f, {0, 255, 255, 255});
+    DrawLineEx({handle_x - 4, slider_y}, {handle_x, slider_y + 4}, 1.5f, {0, 255, 255, 255});
+    DrawLineEx({handle_x + 4, slider_y}, {handle_x, slider_y + 4}, 1.5f, {0, 255, 255, 255});
 
     // Tick counter
-    const char* tick_text = TextFormat("tick %d / %d", vs.current_tick, vs.total_ticks - 1);
-    DrawText(tick_text, 10, static_cast<int>(sh - 50), 16, {200, 200, 200, 255});
+    const char* tick_text = TextFormat("[ TICK %d / %d ]", vs.current_tick, vs.total_ticks - 1);
+    DrawText(tick_text, 10, static_cast<int>(sh - 40), 10, {200, 200, 200, 255});
 
     // Speed
-    const char* speed_text = TextFormat("%.1fx", vs.playback_speed);
-    DrawText(speed_text, static_cast<int>(sw - 60), static_cast<int>(sh - 50), 16, {160, 160, 170, 255});
+    const char* speed_text = TextFormat("[ %.1fx ]", vs.playback_speed);
+    DrawText(speed_text, static_cast<int>(sw - 80), static_cast<int>(sh - 40), 10, {160, 160, 170, 255});
 
     // Play/pause indicator
-    const char* state_text = vs.playing ? "PLAYING" : "PAUSED";
-    Color state_col = vs.playing ? Color{100, 255, 100, 200} : Color{255, 200, 80, 200};
-    DrawText(state_text, 10, static_cast<int>(sh - 30), 12, state_col);
+    const char* state_text = vs.playing ? "▶ PLAYING" : "⏸ PAUSED";
+    Color state_col = vs.playing ? Color{50, 255, 100, 200} : Color{255, 200, 0, 200};
+    DrawText(state_text, 10, static_cast<int>(sh - 20), 10, state_col);
 
     // Diagnostics (compact, top-left)
     std::string latest_hash = "-";
@@ -481,65 +529,79 @@ static void draw_ui(const ViewerState& vs) {
         expired_tracks = static_cast<int>(vs.frames[vs.current_tick].track_expired.size());
     }
 
-    DrawRectangle(10, 28, 260, 58, {25, 25, 30, 200});
-    DrawText(TextFormat("diag hash@<=tick: %s", latest_hash.c_str()), 16, 34, 10, {170, 170, 185, 220});
-    DrawText(TextFormat("tracks active/expired: %d/%d", active_tracks, expired_tracks),
-             16, 47, 10, {170, 170, 185, 220});
+    draw_panel(10, 28, 280, 70);
+    DrawText("[ DIAGNOSTICS ]", 16, 34, 10, {0, 255, 255, 200});
+    DrawText(TextFormat("HASH : %s", latest_hash.c_str()), 16, 50, 10, {170, 170, 185, 220});
+    DrawText(TextFormat("TRK  : %d ACT / %d EXP", active_tracks, expired_tracks),
+             16, 63, 10, {170, 170, 185, 220});
 
     if (latest_stats_tick >= 0) {
-        DrawText(TextFormat("stats@%d msg s/d/x: %d/%d/%d",
-                 latest_stats_tick, stats_sent, stats_delivered, stats_dropped),
-                 16, 60, 10, {170, 170, 185, 220});
+        DrawText(TextFormat("MSG  : %d S / %d D / %d X",
+                 stats_sent, stats_delivered, stats_dropped),
+                 16, 76, 10, {170, 170, 185, 220});
     } else {
-        DrawText("stats: n/a", 16, 60, 10, {120, 120, 130, 200});
+        DrawText("MSG  : N/A", 16, 76, 10, {120, 120, 130, 200});
     }
 
     // Legend (top right)
-    int lx = static_cast<int>(sw - 190);
+    int lx = static_cast<int>(sw - 200);
     int ly = 10;
-    DrawRectangle(lx - 5, ly - 5, 190, 138, {25, 25, 30, 200});
-    DrawCircle(lx + 6, ly + 8, 5, {50, 130, 240, 255});
-    DrawText("Drone", lx + 16, ly + 2, 12, {180, 180, 190, 200});
-    DrawRectangle(lx + 1, ly + 21, 10, 10, {50, 180, 100, 255});
-    DrawText("Ground", lx + 16, ly + 20, 12, {180, 180, 190, 200});
-    DrawCircle(lx + 6, ly + 40, 5, {220, 60, 60, 255});
-    DrawText("Target", lx + 16, ly + 34, 12, {180, 180, 190, 200});
-    DrawCircleLinesV({static_cast<float>(lx + 6), static_cast<float>(ly + 56)}, 6, {255, 200, 80, 200});
-    DrawText("Belief track", lx + 16, ly + 50, 12, {180, 180, 190, 200});
-    DrawLineEx({static_cast<float>(lx), static_cast<float>(ly + 70)},
-               {static_cast<float>(lx + 12), static_cast<float>(ly + 70)}, 1.5f, {80, 220, 80, 140});
-    DrawText("LOS / detection", lx + 16, ly + 64, 12, {180, 180, 190, 200});
-    DrawCircleLinesV({static_cast<float>(lx + 6), static_cast<float>(ly + 86)}, 6, {50, 130, 240, 60});
-    DrawText(vs.show_sensor_ranges ? "Sensor range [R]" : "Sensor range [R] OFF",
-             lx + 16, ly + 80, 12,
+    draw_panel(lx - 5, ly - 5, 200, 160);
+    DrawText("[ LEGEND ]", lx + 16, ly + 2, 10, {0, 255, 255, 200});
+    
+    DrawRectangleLinesEx({static_cast<float>(lx + 2), static_cast<float>(ly + 18), 8, 8}, 1.5f, {0, 255, 255, 255});
+    DrawText("SENSOR", lx + 16, ly + 18, 10, {180, 180, 190, 200});
+    
+    DrawRectangleLinesEx({static_cast<float>(lx + 2), static_cast<float>(ly + 34), 8, 8}, 1.5f, {50, 255, 100, 255});
+    DrawText("TRACKER", lx + 16, ly + 34, 10, {180, 180, 190, 200});
+    
+    DrawLineEx({static_cast<float>(lx + 6), static_cast<float>(ly + 48)}, {static_cast<float>(lx + 10), static_cast<float>(ly + 52)}, 1.5f, {255, 60, 60, 255});
+    DrawLineEx({static_cast<float>(lx + 10), static_cast<float>(ly + 52)}, {static_cast<float>(lx + 6), static_cast<float>(ly + 56)}, 1.5f, {255, 60, 60, 255});
+    DrawLineEx({static_cast<float>(lx + 6), static_cast<float>(ly + 56)}, {static_cast<float>(lx + 2), static_cast<float>(ly + 52)}, 1.5f, {255, 60, 60, 255});
+    DrawLineEx({static_cast<float>(lx + 2), static_cast<float>(ly + 52)}, {static_cast<float>(lx + 6), static_cast<float>(ly + 48)}, 1.5f, {255, 60, 60, 255});
+    DrawText("TARGET", lx + 16, ly + 50, 10, {180, 180, 190, 200});
+    
+    DrawLineEx({static_cast<float>(lx + 2), static_cast<float>(ly + 66)}, {static_cast<float>(lx + 5), static_cast<float>(ly + 66)}, 1.5f, {255, 200, 0, 200});
+    DrawLineEx({static_cast<float>(lx + 2), static_cast<float>(ly + 66)}, {static_cast<float>(lx + 2), static_cast<float>(ly + 69)}, 1.5f, {255, 200, 0, 200});
+    DrawLineEx({static_cast<float>(lx + 10), static_cast<float>(ly + 74)}, {static_cast<float>(lx + 7), static_cast<float>(ly + 74)}, 1.5f, {255, 200, 0, 200});
+    DrawLineEx({static_cast<float>(lx + 10), static_cast<float>(ly + 74)}, {static_cast<float>(lx + 10), static_cast<float>(ly + 71)}, 1.5f, {255, 200, 0, 200});
+    DrawText("BELIEF TRACK", lx + 16, ly + 66, 10, {180, 180, 190, 200});
+    
+    DrawLineEx({static_cast<float>(lx), static_cast<float>(ly + 86)}, {static_cast<float>(lx + 12), static_cast<float>(ly + 86)}, 1.5f, {0, 255, 255, 80});
+    DrawText("LOS / DETECTION", lx + 16, ly + 82, 10, {180, 180, 190, 200});
+    
+    DrawCircleLinesV({static_cast<float>(lx + 6), static_cast<float>(ly + 102)}, 6, {0, 255, 255, 60});
+    DrawText(vs.show_sensor_ranges ? "SENSOR RANGE [R]" : "SENSOR RANGE [R] OFF",
+             lx + 16, ly + 98, 10,
              vs.show_sensor_ranges ? Color{180, 180, 190, 200} : Color{100, 100, 110, 150});
-    DrawLineEx({static_cast<float>(lx), static_cast<float>(ly + 100)},
-               {static_cast<float>(lx + 12), static_cast<float>(ly + 100)}, 1.0f, {220, 60, 60, 80});
-    DrawText(vs.show_waypoint_paths ? "Waypoint path [W]" : "Waypoint path [W] OFF",
-             lx + 16, ly + 94, 12,
+             
+    DrawLineEx({static_cast<float>(lx), static_cast<float>(ly + 118)}, {static_cast<float>(lx + 12), static_cast<float>(ly + 118)}, 1.0f, {0, 255, 255, 150});
+    DrawText(vs.show_waypoint_paths ? "WAYPOINT PATH [W]" : "WAYPOINT PATH [W] OFF",
+             lx + 16, ly + 114, 10,
              vs.show_waypoint_paths ? Color{180, 180, 190, 200} : Color{100, 100, 110, 150});
+             
     // Diamond icon for designation
     {
         float dx = static_cast<float>(lx + 6);
-        float dy = static_cast<float>(ly + 114);
-        DrawLineEx({dx, dy - 5}, {dx + 5, dy}, 1.0f, {80, 200, 240, 200});
-        DrawLineEx({dx + 5, dy}, {dx, dy + 5}, 1.0f, {80, 200, 240, 200});
-        DrawLineEx({dx, dy + 5}, {dx - 5, dy}, 1.0f, {80, 200, 240, 200});
-        DrawLineEx({dx - 5, dy}, {dx, dy - 5}, 1.0f, {80, 200, 240, 200});
+        float dy = static_cast<float>(ly + 134);
+        DrawLineEx({dx, dy - 4}, {dx + 4, dy}, 1.0f, {0, 255, 255, 200});
+        DrawLineEx({dx + 4, dy}, {dx, dy + 4}, 1.0f, {0, 255, 255, 200});
+        DrawLineEx({dx, dy + 4}, {dx - 4, dy}, 1.0f, {0, 255, 255, 200});
+        DrawLineEx({dx - 4, dy}, {dx, dy - 4}, 1.0f, {0, 255, 255, 200});
     }
-    DrawText(vs.show_designations ? "Designation [D]" : "Designation [D] OFF",
-             lx + 16, ly + 108, 12,
+    DrawText(vs.show_designations ? "DESIGNATION [D]" : "DESIGNATION [D] OFF",
+             lx + 16, ly + 130, 10,
              vs.show_designations ? Color{180, 180, 190, 200} : Color{100, 100, 110, 150});
 
     // Controls hint
-    DrawText("SPACE: play/pause  ARROWS: step  +/-: speed  SCROLL: zoom  RIGHT-DRAG: pan  R: ranges  W: waypoints  D: desig",
+    DrawText("[ SPACE: PLAY/PAUSE | ARROWS: STEP | +/-: SPEED | SCROLL: ZOOM | RIGHT-DRAG: PAN | R: RANGES | W: WAYPOINTS | D: DESIG ]",
              10, 10, 10, {120, 120, 130, 160});
 }
 
 // --- Main draw entry point ---
 
 void viewer_draw(const ViewerState& vs) {
-    ClearBackground({20, 20, 25, 255});
+    ClearBackground({8, 8, 10, 255});
     draw_grid(vs);
     draw_obstacles(vs);
     if (vs.show_sensor_ranges)
