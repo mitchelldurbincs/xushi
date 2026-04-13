@@ -2,7 +2,7 @@
 #include "../src/engagement.h"
 #include "../src/sim_engine.h"
 
-static void test_engagement_gates_include_track_and_truth_failures() {
+static void test_engagement_gates_include_track_and_truth_failures(TestContext& ctx) {
     ScenarioEntity actor;
     actor.id = 7;
     actor.position = {0.0f, 0.0f};
@@ -27,20 +27,20 @@ static void test_engagement_gates_include_track_and_truth_failures() {
 
     EngagementGateResult out = compute_engagement_gates(in);
 
-    CHECK(!out.allowed(), "engagement rejected");
-    CHECK(has_reason(out.failure_mask, GateFailureReason::NoCapability), "includes capability gate");
-    CHECK(has_reason(out.failure_mask, GateFailureReason::TrackTooStale), "flags stale tracks");
-    CHECK(has_reason(out.failure_mask, GateFailureReason::TrackTooUncertain), "flags uncertainty");
-    CHECK(has_reason(out.failure_mask, GateFailureReason::IdentityTooWeak), "flags identity");
-    CHECK(has_reason(out.failure_mask, GateFailureReason::NeedsCorroboration), "flags corroboration");
-    CHECK(has_reason(out.failure_mask, GateFailureReason::OutOfRange), "flags range");
+    ctx.check(!out.allowed(), "engagement rejected");
+    ctx.check(has_reason(out.failure_mask, GateFailureReason::NoCapability), "includes capability gate");
+    ctx.check(has_reason(out.failure_mask, GateFailureReason::TrackTooStale), "flags stale tracks");
+    ctx.check(has_reason(out.failure_mask, GateFailureReason::TrackTooUncertain), "flags uncertainty");
+    ctx.check(has_reason(out.failure_mask, GateFailureReason::IdentityTooWeak), "flags identity");
+    ctx.check(has_reason(out.failure_mask, GateFailureReason::NeedsCorroboration), "flags corroboration");
+    ctx.check(has_reason(out.failure_mask, GateFailureReason::OutOfRange), "flags range");
 
-    CHECK(out.debug.track_age_ticks.has_value(), "debug has age");
-    CHECK(out.debug.track_age_ticks.value() == 7, "age derived from world tick");
-    CHECK(out.debug.actor_to_truth_distance.has_value(), "debug has distance");
+    ctx.check(out.debug.track_age_ticks.has_value(), "debug has age");
+    ctx.check(out.debug.track_age_ticks.value() == 7, "age derived from world tick");
+    ctx.check(out.debug.actor_to_truth_distance.has_value(), "debug has distance");
 }
 
-static void test_capable_actor_passes_gates() {
+static void test_capable_actor_passes_gates(TestContext& ctx) {
     // Actor with full capability, close-range target, fresh track — all gates pass.
     Scenario::EffectProfile profile;
     profile.range = 50.0f;
@@ -84,11 +84,11 @@ static void test_capable_actor_passes_gates() {
 
     EngagementGateResult out = compute_engagement_gates(in);
 
-    CHECK(out.allowed(), "capable actor passes all gates");
-    CHECK(out.failure_mask == 0, "no failure reasons");
+    ctx.check(out.allowed(), "capable actor passes all gates");
+    ctx.check(out.failure_mask == 0, "no failure reasons");
 }
 
-static void test_same_team_engagement_rejected() {
+static void test_same_team_engagement_rejected(TestContext& ctx) {
     Scenario::EffectProfile profile;
     profile.range = 50.0f;
     profile.requires_los = false;
@@ -129,12 +129,12 @@ static void test_same_team_engagement_rejected() {
 
     EngagementGateResult out = compute_engagement_gates(in);
 
-    CHECK(!out.allowed(), "same-team engagement rejected");
-    CHECK(has_reason(out.failure_mask, GateFailureReason::FriendlyTarget),
+    ctx.check(!out.allowed(), "same-team engagement rejected");
+    ctx.check(has_reason(out.failure_mask, GateFailureReason::FriendlyTarget),
           "FriendlyTarget flagged for same-team");
 }
 
-static void test_different_team_no_friendly_target() {
+static void test_different_team_no_friendly_target(TestContext& ctx) {
     Scenario::EffectProfile profile;
     profile.range = 50.0f;
     profile.requires_los = false;
@@ -175,11 +175,11 @@ static void test_different_team_no_friendly_target() {
 
     EngagementGateResult out = compute_engagement_gates(in);
 
-    CHECK(!has_reason(out.failure_mask, GateFailureReason::FriendlyTarget),
+    ctx.check(!has_reason(out.failure_mask, GateFailureReason::FriendlyTarget),
           "no FriendlyTarget for different teams");
 }
 
-static void test_cooldown_blocks_engagement() {
+static void test_cooldown_blocks_engagement(TestContext& ctx) {
     Scenario::EffectProfile profile;
     profile.range = 50.0f;
     profile.requires_los = false;
@@ -217,11 +217,11 @@ static void test_cooldown_blocks_engagement() {
 
     EngagementGateResult out = compute_engagement_gates(in);
 
-    CHECK(!out.allowed(), "cooldown blocks engagement");
-    CHECK(has_reason(out.failure_mask, GateFailureReason::Cooldown), "Cooldown flagged");
+    ctx.check(!out.allowed(), "cooldown blocks engagement");
+    ctx.check(has_reason(out.failure_mask, GateFailureReason::Cooldown), "Cooldown flagged");
 }
 
-static void test_out_of_ammo_blocks_engagement() {
+static void test_out_of_ammo_blocks_engagement(TestContext& ctx) {
     Scenario::EffectProfile profile;
     profile.range = 50.0f;
     profile.requires_los = false;
@@ -258,11 +258,11 @@ static void test_out_of_ammo_blocks_engagement() {
 
     EngagementGateResult out = compute_engagement_gates(in);
 
-    CHECK(!out.allowed(), "out of ammo blocks engagement");
-    CHECK(has_reason(out.failure_mask, GateFailureReason::OutOfAmmo), "OutOfAmmo flagged");
+    ctx.check(!out.allowed(), "out of ammo blocks engagement");
+    ctx.check(has_reason(out.failure_mask, GateFailureReason::OutOfAmmo), "OutOfAmmo flagged");
 }
 
-static void test_friendly_risk_only_flags_same_team() {
+static void test_friendly_risk_only_flags_same_team(TestContext& ctx) {
     Scenario::EffectProfile profile;
     profile.range = 50.0f;
     profile.requires_los = false;
@@ -311,7 +311,7 @@ static void test_friendly_risk_only_flags_same_team() {
     in.world.entities = &entities;
 
     EngagementGateResult out1 = compute_engagement_gates(in);
-    CHECK(!has_reason(out1.failure_mask, GateFailureReason::FriendlyRisk),
+    ctx.check(!has_reason(out1.failure_mask, GateFailureReason::FriendlyRisk),
           "enemy bystander does not trigger FriendlyRisk");
 
     // Now add a same-team entity near target — SHOULD trigger FriendlyRisk
@@ -323,7 +323,7 @@ static void test_friendly_risk_only_flags_same_team() {
     entities.push_back(friendly_bystander);
 
     EngagementGateResult out2 = compute_engagement_gates(in);
-    CHECK(has_reason(out2.failure_mask, GateFailureReason::FriendlyRisk),
+    ctx.check(has_reason(out2.failure_mask, GateFailureReason::FriendlyRisk),
           "same-team bystander triggers FriendlyRisk");
 }
 
@@ -393,7 +393,7 @@ static Scenario make_collision_scenario(float distance) {
     return s;
 }
 
-static void test_engagement_stop_within_range() {
+static void test_engagement_stop_within_range(TestContext& ctx) {
     // Two armed enemies start within weapon range (20 apart, range 30).
     // They should NOT move on any tick.
     Scenario scn = make_collision_scenario(20.0f);
@@ -411,13 +411,13 @@ static void test_engagement_stop_within_range() {
     Vec2 pos0_after = engine.get_entities()[0].position;
     Vec2 pos1_after = engine.get_entities()[1].position;
 
-    CHECK(pos0_after.x == pos0_before.x && pos0_after.y == pos0_before.y,
+    ctx.check(pos0_after.x == pos0_before.x && pos0_after.y == pos0_before.y,
           "engagement stop: entity 0 holds position");
-    CHECK(pos1_after.x == pos1_before.x && pos1_after.y == pos1_before.y,
+    ctx.check(pos1_after.x == pos1_before.x && pos1_after.y == pos1_before.y,
           "engagement stop: entity 1 holds position");
 }
 
-static void test_engagement_stop_same_team_ignored() {
+static void test_engagement_stop_same_team_ignored(TestContext& ctx) {
     // Two armed entities on the SAME team within weapon range should NOT stop.
     Scenario scn = make_collision_scenario(20.0f);
     scn.entities[1].team = 0;  // same team
@@ -431,11 +431,11 @@ static void test_engagement_stop_same_team_ignored() {
     engine.step(0, hooks);
 
     Vec2 pos0_after = engine.get_entities()[0].position;
-    CHECK(pos0_after.x != pos0_before.x,
+    ctx.check(pos0_after.x != pos0_before.x,
           "same-team entities continue moving");
 }
 
-static void test_dead_entity_skips_movement() {
+static void test_dead_entity_skips_movement(TestContext& ctx) {
     // An entity with vitality=0 should not move.
     Scenario scn = make_collision_scenario(100.0f);
     scn.entities[0].vitality = 0;
@@ -450,11 +450,11 @@ static void test_dead_entity_skips_movement() {
         engine.step(t, hooks);
 
     Vec2 pos_after = engine.get_entities()[0].position;
-    CHECK(pos_after.x == pos_before.x && pos_after.y == pos_before.y,
+    ctx.check(pos_after.x == pos_before.x && pos_after.y == pos_before.y,
           "dead entity does not move");
 }
 
-static void test_dead_enemy_does_not_block() {
+static void test_dead_enemy_does_not_block(TestContext& ctx) {
     // A dead armed enemy should NOT trigger engagement stop.
     Scenario scn = make_collision_scenario(20.0f);
     scn.entities[1].vitality = 0;  // enemy is dead
@@ -468,11 +468,11 @@ static void test_dead_enemy_does_not_block() {
     engine.step(0, hooks);
 
     Vec2 pos0_after = engine.get_entities()[0].position;
-    CHECK(pos0_after.x != pos0_before.x,
+    ctx.check(pos0_after.x != pos0_before.x,
           "dead enemy does not block movement");
 }
 
-static void test_attacker_combat_causes_death() {
+static void test_attacker_combat_causes_death(TestContext& ctx) {
     // Two attackers within range: one should eventually reach 0 vitality.
     // weapon: 100% hit, -20 damage, cooldown 3, ammo 20
     // 100 HP / 20 damage = 5 hits to kill. At 1 hit per 4 ticks (cooldown 3 + 1 for action timing),
@@ -515,25 +515,26 @@ static void test_attacker_combat_causes_death() {
         if (e.can_engage && e.vitality <= 0)
             someone_died = true;
     }
-    CHECK(someone_died, "prolonged combat causes at least one death");
+    ctx.check(someone_died, "prolonged combat causes at least one death");
 }
 
 int main() {
+    TestContext ctx;
     std::printf("Running engagement tests...\n");
-    test_engagement_gates_include_track_and_truth_failures();
-    test_capable_actor_passes_gates();
-    test_same_team_engagement_rejected();
-    test_different_team_no_friendly_target();
-    test_cooldown_blocks_engagement();
-    test_out_of_ammo_blocks_engagement();
-    test_friendly_risk_only_flags_same_team();
+    test_engagement_gates_include_track_and_truth_failures(ctx);
+    test_capable_actor_passes_gates(ctx);
+    test_same_team_engagement_rejected(ctx);
+    test_different_team_no_friendly_target(ctx);
+    test_cooldown_blocks_engagement(ctx);
+    test_out_of_ammo_blocks_engagement(ctx);
+    test_friendly_risk_only_flags_same_team(ctx);
 
     // Engagement stop (collision) tests
-    test_engagement_stop_within_range();
-    test_engagement_stop_same_team_ignored();
-    test_dead_entity_skips_movement();
-    test_dead_enemy_does_not_block();
-    test_attacker_combat_causes_death();
+    test_engagement_stop_within_range(ctx);
+    test_engagement_stop_same_team_ignored(ctx);
+    test_dead_entity_skips_movement(ctx);
+    test_dead_enemy_does_not_block(ctx);
+    test_attacker_combat_causes_death(ctx);
 
-    TEST_REPORT();
+    return ctx.report_and_exit_code();
 }

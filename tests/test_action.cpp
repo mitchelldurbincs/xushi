@@ -40,7 +40,7 @@ struct RecordingHooks : TickHooks {
     }
 };
 
-static void test_designate_accepted_when_track_exists() {
+static void test_designate_accepted_when_track_exists(TestContext& ctx) {
     Scenario scn = make_minimal_scenario();
     SimEngine engine;
     engine.init(scn);
@@ -54,10 +54,10 @@ static void test_designate_accepted_when_track_exists() {
     // Verify we have a track for entity 1
     auto& beliefs = engine.get_beliefs();
     auto it = beliefs.find(0);
-    CHECK(it != beliefs.end(), "sensor has belief state");
+    ctx.check(it != beliefs.end(), "sensor has belief state");
     if (it == beliefs.end()) return;
     const Track* trk = it->second.find_track(1);
-    CHECK(trk != nullptr, "track exists for target");
+    ctx.check(trk != nullptr, "track exists for target");
 
     // Submit designation
     hooks.results.clear();
@@ -70,19 +70,19 @@ static void test_designate_accepted_when_track_exists() {
     engine.submit_action(req);
     engine.step(5, hooks);
 
-    CHECK(hooks.results.size() == 1, "one action result");
-    CHECK(hooks.results[0].allowed, "designation accepted");
-    CHECK(hooks.results[0].failure_mask == 0, "no failure reasons");
+    ctx.check(hooks.results.size() == 1, "one action result");
+    ctx.check(hooks.results[0].allowed, "designation accepted");
+    ctx.check(hooks.results[0].failure_mask == 0, "no failure reasons");
 
     auto& desigs = engine.get_designations();
-    CHECK(desigs.size() == 1, "one designation stored");
-    CHECK(desigs[0].track_target == 1, "designation targets entity 1");
-    CHECK(desigs[0].kind == DesignationKind::Engage, "designation kind matches");
-    CHECK(desigs[0].priority == 5, "priority matches");
-    CHECK(desigs[0].issuer == 0, "issuer matches");
+    ctx.check(desigs.size() == 1, "one designation stored");
+    ctx.check(desigs[0].track_target == 1, "designation targets entity 1");
+    ctx.check(desigs[0].kind == DesignationKind::Engage, "designation kind matches");
+    ctx.check(desigs[0].priority == 5, "priority matches");
+    ctx.check(desigs[0].issuer == 0, "issuer matches");
 }
 
-static void test_designate_rejected_track_not_found() {
+static void test_designate_rejected_track_not_found(TestContext& ctx) {
     Scenario scn = make_minimal_scenario();
     SimEngine engine;
     engine.init(scn);
@@ -101,13 +101,13 @@ static void test_designate_rejected_track_not_found() {
     engine.submit_action(req);
     engine.step(1, hooks);
 
-    CHECK(hooks.results.size() == 1, "one action result");
-    CHECK(!hooks.results[0].allowed, "designation rejected");
-    CHECK(has_reason(hooks.results[0].failure_mask, GateFailureReason::TrackNotFound),
+    ctx.check(hooks.results.size() == 1, "one action result");
+    ctx.check(!hooks.results[0].allowed, "designation rejected");
+    ctx.check(has_reason(hooks.results[0].failure_mask, GateFailureReason::TrackNotFound),
           "failure reason is TrackNotFound");
 }
 
-static void test_engage_rejected_no_capability() {
+static void test_engage_rejected_no_capability(TestContext& ctx) {
     Scenario scn = make_minimal_scenario();
     SimEngine engine;
     engine.init(scn);
@@ -126,13 +126,13 @@ static void test_engage_rejected_no_capability() {
     engine.submit_action(req);
     engine.step(5, hooks);
 
-    CHECK(hooks.results.size() == 1, "one action result");
-    CHECK(!hooks.results[0].allowed, "engage rejected");
-    CHECK(has_reason(hooks.results[0].failure_mask, GateFailureReason::NoCapability),
+    ctx.check(hooks.results.size() == 1, "one action result");
+    ctx.check(!hooks.results[0].allowed, "engage rejected");
+    ctx.check(has_reason(hooks.results[0].failure_mask, GateFailureReason::NoCapability),
           "failure reason is NoCapability");
 }
 
-static void test_bda_rejected_no_capability() {
+static void test_bda_rejected_no_capability(TestContext& ctx) {
     Scenario scn = make_minimal_scenario();
     SimEngine engine;
     engine.init(scn);
@@ -150,13 +150,13 @@ static void test_bda_rejected_no_capability() {
     engine.submit_action(req);
     engine.step(3, hooks);
 
-    CHECK(hooks.results.size() == 1, "one action result");
-    CHECK(!hooks.results[0].allowed, "BDA rejected");
-    CHECK(has_reason(hooks.results[0].failure_mask, GateFailureReason::NoCapability),
+    ctx.check(hooks.results.size() == 1, "one action result");
+    ctx.check(!hooks.results[0].allowed, "BDA rejected");
+    ctx.check(has_reason(hooks.results[0].failure_mask, GateFailureReason::NoCapability),
           "failure reason is NoCapability");
 }
 
-static void test_designation_expires_after_ttl() {
+static void test_designation_expires_after_ttl(TestContext& ctx) {
     Scenario scn = make_minimal_scenario();
     SimEngine engine;
     engine.init(scn);
@@ -176,16 +176,16 @@ static void test_designation_expires_after_ttl() {
     engine.submit_action(req);
     engine.step(5, hooks);
 
-    CHECK(engine.get_designations().size() == 1, "designation exists");
+    ctx.check(engine.get_designations().size() == 1, "designation exists");
 
     // Advance past TTL (default 30 ticks, so tick 35 should expire it)
     for (int t = 6; t <= 35; ++t)
         engine.step(t, hooks);
 
-    CHECK(engine.get_designations().empty(), "designation expired after TTL");
+    ctx.check(engine.get_designations().empty(), "designation expired after TTL");
 }
 
-static void test_clear_designation_removes_record() {
+static void test_clear_designation_removes_record(TestContext& ctx) {
     Scenario scn = make_minimal_scenario();
     SimEngine engine;
     engine.init(scn);
@@ -203,7 +203,7 @@ static void test_clear_designation_removes_record() {
     desig.desig_kind = DesignationKind::Verify;
     engine.submit_action(desig);
     engine.step(5, hooks);
-    CHECK(engine.get_designations().size() == 1, "designation created");
+    ctx.check(engine.get_designations().size() == 1, "designation created");
 
     // Clear it
     hooks.results.clear();
@@ -215,12 +215,12 @@ static void test_clear_designation_removes_record() {
     engine.submit_action(clear);
     engine.step(6, hooks);
 
-    CHECK(hooks.results.size() == 1, "one result for clear");
-    CHECK(hooks.results[0].allowed, "clear accepted");
-    CHECK(engine.get_designations().empty(), "designation removed");
+    ctx.check(hooks.results.size() == 1, "one result for clear");
+    ctx.check(hooks.results[0].allowed, "clear accepted");
+    ctx.check(engine.get_designations().empty(), "designation removed");
 }
 
-static void test_clear_nonexistent_designation_rejected() {
+static void test_clear_nonexistent_designation_rejected(TestContext& ctx) {
     Scenario scn = make_minimal_scenario();
     SimEngine engine;
     engine.init(scn);
@@ -237,12 +237,12 @@ static void test_clear_nonexistent_designation_rejected() {
     engine.submit_action(clear);
     engine.step(1, hooks);
 
-    CHECK(!hooks.results[0].allowed, "clear of nonexistent rejected");
-    CHECK(has_reason(hooks.results[0].failure_mask, GateFailureReason::TrackNotFound),
+    ctx.check(!hooks.results[0].allowed, "clear of nonexistent rejected");
+    ctx.check(has_reason(hooks.results[0].failure_mask, GateFailureReason::TrackNotFound),
           "reason is TrackNotFound");
 }
 
-static void test_multiple_actions_per_tick() {
+static void test_multiple_actions_per_tick(TestContext& ctx) {
     Scenario scn = make_minimal_scenario();
     SimEngine engine;
     engine.init(scn);
@@ -277,13 +277,13 @@ static void test_multiple_actions_per_tick() {
 
     engine.step(5, hooks);
 
-    CHECK(hooks.results.size() == 3, "three action results");
-    CHECK(hooks.results[0].allowed, "designate accepted");
-    CHECK(!hooks.results[1].allowed, "engage rejected");
-    CHECK(!hooks.results[2].allowed, "BDA rejected");
+    ctx.check(hooks.results.size() == 3, "three action results");
+    ctx.check(hooks.results[0].allowed, "designate accepted");
+    ctx.check(!hooks.results[1].allowed, "engage rejected");
+    ctx.check(!hooks.results[2].allowed, "BDA rejected");
 }
 
-static void test_action_result_echoes_request() {
+static void test_action_result_echoes_request(TestContext& ctx) {
     Scenario scn = make_minimal_scenario();
     SimEngine engine;
     engine.init(scn);
@@ -302,23 +302,24 @@ static void test_action_result_echoes_request() {
     engine.submit_action(req);
     engine.step(3, hooks);
 
-    CHECK(hooks.results[0].request.actor == 0, "echoed actor");
-    CHECK(hooks.results[0].request.type == ActionType::EngageTrack, "echoed type");
-    CHECK(hooks.results[0].request.track_target == 1, "echoed track_target");
-    CHECK(hooks.results[0].request.effect_profile_index == 7, "echoed effect_profile_index");
-    CHECK(hooks.results[0].tick == 3, "result tick matches");
+    ctx.check(hooks.results[0].request.actor == 0, "echoed actor");
+    ctx.check(hooks.results[0].request.type == ActionType::EngageTrack, "echoed type");
+    ctx.check(hooks.results[0].request.track_target == 1, "echoed track_target");
+    ctx.check(hooks.results[0].request.effect_profile_index == 7, "echoed effect_profile_index");
+    ctx.check(hooks.results[0].tick == 3, "result tick matches");
 }
 
 int main() {
+    TestContext ctx;
     std::printf("Running action tests...\n");
-    test_designate_accepted_when_track_exists();
-    test_designate_rejected_track_not_found();
-    test_engage_rejected_no_capability();
-    test_bda_rejected_no_capability();
-    test_designation_expires_after_ttl();
-    test_clear_designation_removes_record();
-    test_clear_nonexistent_designation_rejected();
-    test_multiple_actions_per_tick();
-    test_action_result_echoes_request();
-    TEST_REPORT();
+    test_designate_accepted_when_track_exists(ctx);
+    test_designate_rejected_track_not_found(ctx);
+    test_engage_rejected_no_capability(ctx);
+    test_bda_rejected_no_capability(ctx);
+    test_designation_expires_after_ttl(ctx);
+    test_clear_designation_removes_record(ctx);
+    test_clear_nonexistent_designation_rejected(ctx);
+    test_multiple_actions_per_tick(ctx);
+    test_action_result_echoes_request(ctx);
+    return ctx.report_and_exit_code();
 }
