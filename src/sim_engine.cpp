@@ -353,6 +353,26 @@ void SimEngine::submit_action(const ActionRequest& req) {
 }
 
 void SimEngine::adjudicate_actions(int tick, TickHooks& hooks) {
+    constexpr float kMinIdentityConfidenceForEngage = 0.0f;
+    constexpr int kMinCorroborationForEngage = 1;
+    constexpr float kDefaultEffectRange = 80.0f;
+    constexpr float kEffectRangeStep = 20.0f;
+    constexpr Vec2 kProtectedZoneCenter{0.0f, 0.0f};
+    constexpr float kProtectedZoneRadius = 10.0f;
+    constexpr float kFriendlyRiskRadius = 8.0f;
+
+    auto get_entity = [&](EntityId id) -> const ScenarioEntity* {
+        for (const auto& entity : entities_) {
+            if (entity.id == id)
+                return &entity;
+        }
+        return nullptr;
+    };
+
+    auto effect_profile_range = [&](uint32_t effect_profile_index) -> float {
+        return kDefaultEffectRange + static_cast<float>(effect_profile_index) * kEffectRangeStep;
+    };
+
     for (const auto& req : pending_actions_) {
         ActionResult result;
         result.request = req;
@@ -399,8 +419,74 @@ void SimEngine::adjudicate_actions(int tick, TickHooks& hooks) {
             break;
         }
         case ActionType::EngageTrack: {
-            result.allowed = false;
-            result.failure_mask = static_cast<uint32_t>(GateFailureReason::NoCapability);
+            uint32_t failure_mask = 0;
+            auto add_failure = [&](GateFailureReason reason) {
+                failure_mask |= static_cast<uint32_t>(reason);
+            };
+
+            const ScenarioEntity* actor = get_entity(req.actor);
+            const bool actor_has_capability = false; // Placeholder until explicit engage capability is modeled.
+            const bool actor_disabled = false; // Placeholder until explicit runtime disable state is modeled.
+            if (!actor_has_capability)
+                add_failure(GateFailureReason::NoCapability);
+            if (actor_disabled)
+                add_failure(GateFailureReason::ActorDisabled);
+
+            const Track* track = nullptr;
+            if (belief_it == beliefs_.end()) {
+                add_failure(GateFailureReason::TrackNotFound);
+            } else {
+                track = belief_it->second.find_track(req.track_target);
+                if (!track) {
+                    add_failure(GateFailureReason::TrackNotFound);
+                } else {
+                    if (track->status != TrackStatus::FRESH)
+                        add_failure(GateFailureReason::TrackTooStale);
+                    if (track->identity_confidence < kMinIdentityConfidenceForEngage)
+                        add_failure(GateFailureReason::IdentityTooWeak);
+                    if (track->corroboration_count < kMinCorroborationForEngage)
+                        add_failure(GateFailureReason::NeedsCorroboration);
+
+                    if (actor) {
+                        float range_to_track = (track->estimated_position - actor->position).length();
+                        float max_effect_range = effect_profile_range(req.effect_profile_index);
+                        if (range_to_track > max_effect_range)
+                            add_failure(GateFailureReason::OutOfRange);
+                        if (!map_.line_of_sight(actor->position, track->estimated_position))
+                            add_failure(GateFailureReason::NoLineOfEffect);
+                    }
+
+                    float protected_zone_distance =
+                        (track->estimated_position - kProtectedZoneCenter).length();
+                    if (protected_zone_distance <= kProtectedZoneRadius)
+                        add_failure(GateFailureReason::ProtectedZone);
+
+                    for (const auto& entity : entities_) {
+                        if (entity.id == req.actor || entity.id == req.track_target)
+                            continue;
+                        if ((entity.position - track->estimated_position).length() <= kFriendlyRiskRadius) {
+                            add_failure(GateFailureReason::FriendlyRisk);
+                            break;
+                        }
+                    }
+
+                    // Placeholder ROE gate; wire policy-based conditions here when available.
+                    const bool roe_allows = true;
+                    if (!roe_allows)
+                        add_failure(GateFailureReason::ROEBlocked);
+                }
+            }
+
+            const bool cooldown_available = true; // Placeholder until per-actor cooldown state exists.
+            if (!cooldown_available)
+                add_failure(GateFailureReason::Cooldown);
+
+            const bool ammo_available = true; // Placeholder until per-actor ammo state exists.
+            if (!ammo_available)
+                add_failure(GateFailureReason::OutOfAmmo);
+
+            result.failure_mask = failure_mask;
+            result.allowed = (failure_mask == 0);
             break;
         }
         case ActionType::RequestBDA: {
