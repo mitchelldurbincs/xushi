@@ -6,7 +6,7 @@ namespace {
 constexpr float kDefaultEffectRange = 80.0f;
 constexpr float kEffectRangeStep = 20.0f;
 constexpr float kMaxTrackUncertainty = 20.0f;
-constexpr float kMinIdentityConfidence = 0.0f;  // Relaxed for current modeling
+constexpr float kMinIdentityConfidence = 0.5f;
 constexpr int kMinCorroborationCount = 1;
 constexpr Vec2 kProtectedZoneCenter{0.0f, 0.0f};
 constexpr float kProtectedZoneRadius = 10.0f;
