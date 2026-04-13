@@ -11,6 +11,34 @@ static void test_parse_number() {
     CHECK(v.as_number() == 1000.0, "parse scientific notation");
 }
 
+
+static void test_number_grammar() {
+    bool caught = false;
+
+    try { json_parse("-"); } catch (const std::runtime_error&) { caught = true; }
+    CHECK(caught, "reject bare minus");
+
+    caught = false;
+    try { json_parse("1e"); } catch (const std::runtime_error&) { caught = true; }
+    CHECK(caught, "reject exponent without digits");
+
+    caught = false;
+    try { json_parse("1e+"); } catch (const std::runtime_error&) { caught = true; }
+    CHECK(caught, "reject signed exponent without digits");
+
+    caught = false;
+    try { json_parse("-.5"); } catch (const std::runtime_error&) { caught = true; }
+    CHECK(caught, "reject missing integer part before decimal");
+
+    caught = false;
+    try { json_parse("01"); } catch (const std::runtime_error&) { caught = true; }
+    CHECK(caught, "reject leading zeros");
+
+    CHECK(json_parse("0").as_number() == 0.0, "accept zero");
+    CHECK(json_parse("-1").as_number() == -1.0, "accept negative integer");
+    CHECK(json_parse("1.0").as_number() == 1.0, "accept decimal number");
+    CHECK(std::fabs(json_parse("1e-3").as_number() - 1e-3) < 1e-12, "accept scientific notation with sign");
+}
 static void test_parse_string() {
     auto v = json_parse("\"hello\"");
     CHECK(v.as_string() == "hello", "parse simple string");
@@ -68,6 +96,7 @@ static void test_defaults() {
 int main() {
     std::printf("Running JSON tests...\n");
     test_parse_number();
+    test_number_grammar();
     test_parse_string();
     test_parse_bool_null();
     test_parse_array();

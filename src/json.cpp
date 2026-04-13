@@ -1,5 +1,6 @@
 #include "json.h"
 #include <cstdlib>
+#include <cerrno>
 #include <cctype>
 #include <cstring>
 
@@ -133,21 +134,45 @@ struct Parser {
     JsonValue parse_number() {
         skip_ws();
         size_t start = pos;
+
         if (pos < input.size() && input[pos] == '-') pos++;
-        while (pos < input.size() && std::isdigit(static_cast<unsigned char>(input[pos]))) pos++;
-        if (pos < input.size() && input[pos] == '.') {
+
+        if (pos >= input.size() || !std::isdigit(static_cast<unsigned char>(input[pos])))
+            error("expected digit in integer part");
+
+        if (input[pos] == '0') {
             pos++;
+            if (pos < input.size() && std::isdigit(static_cast<unsigned char>(input[pos])))
+                error("leading zeros are not allowed");
+        } else {
             while (pos < input.size() && std::isdigit(static_cast<unsigned char>(input[pos]))) pos++;
         }
+
+        if (pos < input.size() && input[pos] == '.') {
+            pos++;
+            if (pos >= input.size() || !std::isdigit(static_cast<unsigned char>(input[pos])))
+                error("expected digit after decimal point");
+            while (pos < input.size() && std::isdigit(static_cast<unsigned char>(input[pos]))) pos++;
+        }
+
         if (pos < input.size() && (input[pos] == 'e' || input[pos] == 'E')) {
             pos++;
             if (pos < input.size() && (input[pos] == '+' || input[pos] == '-')) pos++;
+            if (pos >= input.size() || !std::isdigit(static_cast<unsigned char>(input[pos])))
+                error("expected exponent digits");
             while (pos < input.size() && std::isdigit(static_cast<unsigned char>(input[pos]))) pos++;
         }
-        if (pos == start) error("expected number");
+
+        const std::string token = input.substr(start, pos - start);
+        char* end = nullptr;
+        errno = 0;
+        double parsed = std::strtod(token.c_str(), &end);
+        if (end != token.c_str() + token.size() || errno == ERANGE)
+            error("invalid number literal");
+
         JsonValue v;
         v.type = JsonValue::NUMBER;
-        v.number_val = std::strtod(input.c_str() + start, nullptr);
+        v.number_val = parsed;
         return v;
     }
 
