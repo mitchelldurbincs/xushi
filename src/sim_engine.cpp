@@ -72,6 +72,12 @@ void SimEngine::init(const Scenario& scn, Policy* policy) {
 void SimEngine::step(int tick, TickHooks& hooks) {
     const Scenario& scn = *scn_;
 
+    // Cooldowns tick down once per simulation step.
+    for (auto& e : entities_) {
+        if (e.cooldown_ticks_remaining > 0)
+            --e.cooldown_ticks_remaining;
+    }
+
     // ── Movement ── task override > policy override > default
     for (auto& e : entities_) {
         auto task_it = active_tasks_.find(e.id);
@@ -353,6 +359,20 @@ void SimEngine::submit_action(const ActionRequest& req) {
     pending_actions_.push_back(req);
 }
 
+ScenarioEntity* SimEngine::find_entity(EntityId id) {
+    for (auto& e : entities_) {
+        if (e.id == id)
+            return &e;
+    }
+    return nullptr;
+}
+
+const Scenario::EffectProfile* SimEngine::find_effect_profile(uint32_t index) const {
+    if (!scn_) return nullptr;
+    if (index >= scn_->effect_profiles.size()) return nullptr;
+    return &scn_->effect_profiles[index];
+}
+
 void SimEngine::adjudicate_actions(int tick, TickHooks& hooks) {
     constexpr float kMinIdentityConfidenceForEngage = 0.0f;
     constexpr int kMinCorroborationForEngage = 1;
@@ -420,40 +440,82 @@ void SimEngine::adjudicate_actions(int tick, TickHooks& hooks) {
             break;
         }
         case ActionType::EngageTrack: {
-            const ScenarioEntity* actor_ent = nullptr;
-            for (const auto& e : entities_) {
-                if (e.id == req.actor) {
-                    actor_ent = &e;
-                    break;
-                }
-            }
-
+            ScenarioEntity* actor = find_entity(req.actor);
+            const Scenario::EffectProfile* profile = find_effect_profile(req.effect_profile_index);
+            ScenarioEntity* target = find_entity(req.track_target);
             const Track* target_track = nullptr;
             if (belief_it != beliefs_.end())
                 target_track = belief_it->second.find_track(req.track_target);
 
-            const ScenarioEntity* target_truth = nullptr;
-            for (const auto& e : entities_) {
-                if (e.id == req.track_target) {
-                    target_truth = &e;
-                    break;
-                }
+            // Basic engagement gates (runtime state checks)
+            uint32_t failure = 0;
+            if (!actor || !actor->can_engage)
+                failure |= static_cast<uint32_t>(GateFailureReason::NoCapability);
+            if (actor && actor->cooldown_ticks_remaining > 0)
+                failure |= static_cast<uint32_t>(GateFailureReason::Cooldown);
+            if (!profile)
+                failure |= static_cast<uint32_t>(GateFailureReason::NoCapability);
+            if (actor && profile && actor->ammo < profile->ammo_cost)
+                failure |= static_cast<uint32_t>(GateFailureReason::OutOfAmmo);
+            if (!target_track)
+                failure |= static_cast<uint32_t>(GateFailureReason::TrackNotFound);
+            if (!target)
+                failure |= static_cast<uint32_t>(GateFailureReason::TrackNotFound);
+
+            // Tactical engagement gates (spatial/policy checks)
+            if (actor && target && target_track) {
+                EngagementGateInputs gate_inputs;
+                gate_inputs.actor = actor;
+                gate_inputs.target_track = target_track;
+                gate_inputs.target_truth = target;
+                gate_inputs.effect_profile_index = req.effect_profile_index;
+                gate_inputs.world.map = &map_;
+                gate_inputs.world.tick = tick;
+                gate_inputs.world.entities = &entities_;
+                gate_inputs.world.actor_id = req.actor;
+                gate_inputs.world.track_target_id = req.track_target;
+
+                const EngagementGateResult gate_result = compute_engagement_gates(gate_inputs);
+                failure |= gate_result.failure_mask;
             }
 
-            EngagementGateInputs gate_inputs;
-            gate_inputs.actor = actor_ent;
-            gate_inputs.target_track = target_track;
-            gate_inputs.target_truth = target_truth;
-            gate_inputs.effect_profile_index = req.effect_profile_index;
-            gate_inputs.world.map = &map_;
-            gate_inputs.world.tick = tick;
-            gate_inputs.world.entities = &entities_;
-            gate_inputs.world.actor_id = req.actor;
-            gate_inputs.world.track_target_id = req.track_target;
+            result.failure_mask = failure;
+            result.allowed = (failure == 0);
 
-            const EngagementGateResult gate_result = compute_engagement_gates(gate_inputs);
-            result.allowed = gate_result.allowed();
-            result.failure_mask = gate_result.failure_mask;
+            // Effect resolution if allowed
+            if (result.allowed && actor && profile && target) {
+                EffectOutcome outcome;
+                outcome.request = req;
+                outcome.tick = tick;
+                outcome.realized = true;
+                outcome.vitality_before = target->vitality;
+                outcome.actor_ammo_before = actor->ammo;
+                outcome.actor_cooldown_before = actor->cooldown_ticks_remaining;
+
+                outcome.hit = rng_.uniform() < profile->hit_probability;
+                if (outcome.hit) {
+                    int delta = profile->vitality_delta_min;
+                    if (profile->vitality_delta_min != profile->vitality_delta_max) {
+                        float u = rng_.uniform();
+                        int span = profile->vitality_delta_max - profile->vitality_delta_min + 1;
+                        delta = profile->vitality_delta_min + static_cast<int>(std::floor(u * span));
+                        if (delta > profile->vitality_delta_max)
+                            delta = profile->vitality_delta_max;
+                    }
+                    int new_vitality = std::clamp(target->vitality + delta, 0, target->max_vitality);
+                    target->vitality = new_vitality;
+                }
+
+                actor->ammo = std::max(0, actor->ammo - profile->ammo_cost);
+                actor->cooldown_ticks_remaining = profile->cooldown_ticks;
+
+                outcome.vitality_after = target->vitality;
+                outcome.vitality_delta = outcome.vitality_after - outcome.vitality_before;
+                outcome.actor_ammo_after = actor->ammo;
+                outcome.actor_cooldown_after = actor->cooldown_ticks_remaining;
+
+                hooks.on_effect_resolved(tick, outcome);
+            }
             break;
         }
         case ActionType::RequestBDA: {

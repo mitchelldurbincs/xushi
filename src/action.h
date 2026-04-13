@@ -67,6 +67,20 @@ struct ActionResult {
     int tick = 0;
 };
 
+struct EffectOutcome {
+    ActionRequest request;
+    bool realized = false;          // false => gate rejected/no realized effect
+    bool hit = false;
+    int vitality_before = 0;
+    int vitality_after = 0;
+    int vitality_delta = 0;         // signed change applied to target
+    int actor_ammo_before = 0;
+    int actor_ammo_after = 0;
+    int actor_cooldown_before = 0;
+    int actor_cooldown_after = 0;
+    int tick = 0;
+};
+
 // ── Designation records ──
 
 struct DesignationRecord {

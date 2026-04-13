@@ -45,6 +45,7 @@ struct TickHooks {
 
     // Actions
     virtual void on_action_resolved(int /*tick*/, const ActionResult& /*result*/) {}
+    virtual void on_effect_resolved(int /*tick*/, const EffectOutcome& /*outcome*/) {}
 
     // Periodic snapshots
     virtual void on_world_hash(int /*tick*/, uint64_t /*hash*/) {}
@@ -102,4 +103,6 @@ private:
     std::vector<DesignationRecord> designations_;
     uint64_t next_designation_id_ = 1;
     void adjudicate_actions(int tick, TickHooks& hooks);
+    ScenarioEntity* find_entity(EntityId id);
+    const Scenario::EffectProfile* find_effect_profile(uint32_t index) const;
 };
