@@ -53,5 +53,8 @@ inline constexpr int kDefaultDesignationTTL = 30;
 // Search initialization
 // ---------------------------------------------------------------------------
 
+// Sentinel entity ID representing an invalid / unset entity reference.
+inline constexpr EntityId kInvalidEntity = 0xFFFFFFFE;
+
 // Large sentinel value used to initialize nearest-entity distance searches.
 inline constexpr float kInfDistance = 1e9f;

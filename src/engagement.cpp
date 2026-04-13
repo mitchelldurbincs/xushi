@@ -12,9 +12,9 @@ constexpr Vec2 kProtectedZoneCenter{0.0f, 0.0f};
 constexpr float kProtectedZoneRadius = 10.0f;
 constexpr float kFriendlyRiskRadius = 8.0f;
 
-auto effect_profile_range = [&](uint32_t effect_profile_index) -> float {
+float effect_profile_range(uint32_t effect_profile_index) {
     return kDefaultEffectRange + static_cast<float>(effect_profile_index) * kEffectRangeStep;
-};
+}
 }
 
 EngagementGateResult compute_engagement_gates(const EngagementGateInputs& in) {

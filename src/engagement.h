@@ -2,6 +2,7 @@
 
 #include "action.h"
 #include "belief.h"
+#include "constants.h"
 #include "map.h"
 #include "scenario.h"
 #include <optional>
