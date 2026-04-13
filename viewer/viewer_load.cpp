@@ -1,5 +1,6 @@
 #include "viewer.h"
 #include "../src/replay.h"
+#include "../src/path_resolve.h"
 #include "raylib.h"
 #include <algorithm>
 #include <cstdio>
@@ -131,7 +132,8 @@ void viewer_load(ViewerState& vs, const std::string& replay_path) {
     if (get_required_string(hdr, "type", header_context) != "header")
         throw std::runtime_error(header_context + ": expected type == 'header'");
 
-    vs.scenario_path = get_required_string(hdr, "scenario", header_context);
+    const std::string& header_scenario_path = get_required_string(hdr, "scenario", header_context);
+    vs.scenario_path = resolve_scenario_path_from_replay(replay_path, header_scenario_path);
     int header_ticks = get_required_int(hdr, "ticks", header_context);
     double header_dt = get_required_number(hdr, "dt", header_context);
     vs.scenario = load_scenario(vs.scenario_path);
