@@ -213,7 +213,7 @@ int main(int argc, char* argv[]) {
     std::string replay_path = path;
     auto dot = replay_path.rfind('.');
     if (dot != std::string::npos)
-        replay_path = replay_path.substr(0, dot);
+        replay_path.resize(dot);
     replay_path += ".replay";
 
     // Construct policy from scenario config

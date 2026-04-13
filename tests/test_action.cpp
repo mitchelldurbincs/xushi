@@ -55,6 +55,7 @@ static void test_designate_accepted_when_track_exists() {
     auto& beliefs = engine.get_beliefs();
     auto it = beliefs.find(0);
     CHECK(it != beliefs.end(), "sensor has belief state");
+    if (it == beliefs.end()) return;
     const Track* trk = it->second.find_track(1);
     CHECK(trk != nullptr, "track exists for target");
 
