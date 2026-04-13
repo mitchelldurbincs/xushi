@@ -8,6 +8,8 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <functional>
+#include <unordered_map>
 #include <memory>
 #include <string>
 
@@ -18,41 +20,70 @@ static double elapsed_us(Clock::time_point start) {
 }
 
 struct CLIHooks : TickHooks {
+    struct EntityLookup {
+        const std::vector<ScenarioEntity>* entities = nullptr;
+        std::unordered_map<EntityId, const ScenarioEntity*> by_id;
+
+        void refresh(const std::vector<ScenarioEntity>* ents) {
+            entities = ents;
+            by_id.clear();
+            if (!entities) return;
+            by_id.reserve(entities->size());
+            for (const auto& e : *entities) by_id[e.id] = &e;
+        }
+
+        const ScenarioEntity* find(EntityId id) const {
+            auto it = by_id.find(id);
+            return it == by_id.end() ? nullptr : it->second;
+        }
+
+        const char* role(EntityId id) const {
+            auto* entity = find(id);
+            return entity ? entity->role_name.c_str() : "?";
+        }
+    };
+
     ReplayWriter* replay;
     SystemStats* stats;
     bool bench_mode;
-
-    const std::vector<ScenarioEntity>* entities;
     const std::map<EntityId, BeliefState>* beliefs;
+    EntityLookup entity_lookup;
 
     double sensing_replay_us = 0;
 
-    const char* entity_role(EntityId id) const {
-        for (const auto& e : *entities) {
-            if (e.id == id) return e.role_name.c_str();
-        }
-        return "?";
+    void log_replay_timed(bool include_sensing, const std::function<void()>& emit) {
+        auto t = Clock::now();
+        emit();
+        double r = elapsed_us(t);
+        if (include_sensing) sensing_replay_us += r;
+        stats->replay_us += r;
     }
 
-    const ScenarioEntity* find_entity(EntityId id) const {
-        for (const auto& e : *entities) {
-            if (e.id == id) return &e;
-        }
-        return nullptr;
+    void print_detection(int tick, const Observation& obs) const {
+        auto* sensor = entity_lookup.find(obs.observer);
+        const char* sensor_name = sensor ? sensor->role_name.c_str() : "?";
+        auto* target = entity_lookup.find(obs.target);
+        const char* target_name = target ? target->role_name.c_str() : "?";
+        std::printf("tick %3d  %s[%u] detected %s %u\n",
+                    tick, sensor_name, obs.observer, target_name, obs.target);
+    }
+
+    void print_miss(int tick, EntityId sensor) const {
+        std::printf("tick %3d  %s[%u] ---\n", tick, entity_lookup.role(sensor), sensor);
+    }
+
+    void print_false_positive(int tick, EntityId sensor, const Observation& phantom) const {
+        std::printf("tick %3d  %s[%u] FALSE POSITIVE at (%.1f,%.1f)\n",
+                    tick, entity_lookup.role(sensor), sensor,
+                    phantom.estimated_position.x, phantom.estimated_position.y);
     }
 
     void on_entity_moved(int tick, EntityId id, Vec2 pos) override {
-        auto t = Clock::now();
-        replay->log(replay_entity_position(tick, id, pos));
-        double r = elapsed_us(t);
-        stats->replay_us += r;
+        log_replay_timed(false, [&] { replay->log(replay_entity_position(tick, id, pos)); });
     }
 
     void on_waypoint_arrival(int tick, EntityId id, int waypoint_index, Vec2 pos) override {
-        auto t = Clock::now();
-        replay->log(replay_waypoint_arrival(tick, id, waypoint_index, pos));
-        double r = elapsed_us(t);
-        stats->replay_us += r;
+        log_replay_timed(false, [&] { replay->log(replay_waypoint_arrival(tick, id, waypoint_index, pos)); });
     }
 
     void on_positions_check(const std::vector<ScenarioEntity>& ents) override {
@@ -60,50 +91,27 @@ struct CLIHooks : TickHooks {
     }
 
     void on_detection(int tick, const Observation& obs) override {
-        auto t = Clock::now();
-        replay->log(replay_detection(tick, obs));
-        double r = elapsed_us(t);
-        sensing_replay_us += r;
-        stats->replay_us += r;
+        log_replay_timed(true, [&] { replay->log(replay_detection(tick, obs)); });
 
         if (!bench_mode && !obs.is_false_positive) {
-            auto* sensor = find_entity(obs.observer);
-            const char* sensor_name = sensor ? sensor->role_name.c_str() : "?";
-            auto* target = find_entity(obs.target);
-            const char* target_name = target ? target->role_name.c_str() : "?";
-            std::printf("tick %3d  %s[%u] detected %s %u\n",
-                        tick, sensor_name, obs.observer, target_name, obs.target);
+            print_detection(tick, obs);
         }
     }
 
     void on_miss(int tick, EntityId sensor) override {
-        if (!bench_mode) {
-            std::printf("tick %3d  %s[%u] ---\n",
-                        tick, entity_role(sensor), sensor);
-        }
+        if (!bench_mode) print_miss(tick, sensor);
     }
 
     void on_false_positive(int tick, EntityId sensor, const Observation& phantom) override {
-        if (!bench_mode)
-            std::printf("tick %3d  %s[%u] FALSE POSITIVE at (%.1f,%.1f)\n",
-                        tick, entity_role(sensor), sensor,
-                        phantom.estimated_position.x, phantom.estimated_position.y);
+        if (!bench_mode) print_false_positive(tick, sensor, phantom);
     }
 
     void on_msg_sent(int tick, EntityId sender, EntityId receiver, int delivery_tick) override {
-        auto t = Clock::now();
-        replay->log(replay_msg_sent(tick, sender, receiver, delivery_tick));
-        double r = elapsed_us(t);
-        sensing_replay_us += r;
-        stats->replay_us += r;
+        log_replay_timed(true, [&] { replay->log(replay_msg_sent(tick, sender, receiver, delivery_tick)); });
     }
 
     void on_msg_dropped(int tick, EntityId sender, EntityId receiver) override {
-        auto t = Clock::now();
-        replay->log(replay_msg_dropped(tick, sender, receiver));
-        double r = elapsed_us(t);
-        sensing_replay_us += r;
-        stats->replay_us += r;
+        log_replay_timed(true, [&] { replay->log(replay_msg_dropped(tick, sender, receiver)); });
     }
 
     void on_msg_delivered(int tick, EntityId sender, EntityId receiver) override {
@@ -155,7 +163,7 @@ struct CLIHooks : TickHooks {
         replay->log(replay_task_completed(tick, entity, target, corroborated));
         if (!bench_mode) {
             std::printf("tick %3d  TASK COMPLETED: %s[%u] %s target %u\n",
-                        tick, entity_role(entity), entity,
+                        tick, entity_lookup.role(entity), entity,
                         corroborated ? "CORROBORATED" : "NOT FOUND", target);
         }
     }
@@ -256,8 +264,8 @@ int main(int argc, char* argv[]) {
     hooks.replay = &replay;
     hooks.stats = &engine.stats();
     hooks.bench_mode = bench_mode;
-    hooks.entities = &engine.get_entities();
     hooks.beliefs = &engine.get_beliefs();
+    hooks.entity_lookup.refresh(&engine.get_entities());
 
     for (int tick = 0; tick < scn.ticks; ++tick) {
         hooks.sensing_replay_us = 0;
