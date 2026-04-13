@@ -20,14 +20,14 @@ static void write_file(const fs::path& path, const std::string& content) {
     out << content;
 }
 
-static void test_absolute_path_kept() {
+static void test_absolute_path_kept(TestContext& ctx) {
     const fs::path root = make_tmp_root();
     const fs::path absolute = root / "scenarios" / "alpha.json";
     const std::string resolved = resolve_scenario_path_from_replay("ignored.replay", absolute.string());
-    CHECK(resolved == absolute.lexically_normal().string(), "absolute paths remain absolute");
+    ctx.check(resolved == absolute.lexically_normal().string(), "absolute paths remain absolute");
 }
 
-static void test_relative_prefers_replay_parent() {
+static void test_relative_prefers_replay_parent(TestContext& ctx) {
     const fs::path root = make_tmp_root();
     const fs::path replay_dir = root / "runs" / "session";
     const fs::path cwd_dir = root / "cwd";
@@ -41,13 +41,13 @@ static void test_relative_prefers_replay_parent() {
     fs::current_path(cwd_dir);
 
     const std::string resolved = resolve_scenario_path_from_replay(replay_path.string(), "scenarios/scene.json");
-    CHECK(resolved == (replay_dir / "scenarios" / "scene.json").lexically_normal().string(),
+    ctx.check(resolved == (replay_dir / "scenarios" / "scene.json").lexically_normal().string(),
           "relative path resolves against replay parent first");
 
     fs::current_path(original_cwd);
 }
 
-static void test_relative_falls_back_to_cwd() {
+static void test_relative_falls_back_to_cwd(TestContext& ctx) {
     const fs::path root = make_tmp_root();
     const fs::path replay_dir = root / "runs" / "session";
     const fs::path cwd_dir = root / "cwd";
@@ -60,16 +60,16 @@ static void test_relative_falls_back_to_cwd() {
     fs::current_path(cwd_dir);
 
     const std::string resolved = resolve_scenario_path_from_replay(replay_path.string(), "scenarios/fallback.json");
-    CHECK(resolved == fs::path("scenarios/fallback.json").lexically_normal().string(),
+    ctx.check(resolved == fs::path("scenarios/fallback.json").lexically_normal().string(),
           "fallback keeps cwd-relative path for compatibility");
 
     fs::current_path(original_cwd);
 }
 
 int main() {
-    std::printf("Running replay path resolution tests...\n");
-    test_absolute_path_kept();
-    test_relative_prefers_replay_parent();
-    test_relative_falls_back_to_cwd();
-    TEST_REPORT();
+    return run_test_suite("replay path resolution", [](TestContext& ctx) {
+    test_absolute_path_kept(ctx);
+    test_relative_prefers_replay_parent(ctx);
+    test_relative_falls_back_to_cwd(ctx);
+    });
 }

@@ -76,21 +76,21 @@ struct GameModeHooks : TickHooks {
 
 // ── Factory tests ──
 
-static void test_factory_returns_nullptr_when_no_mode() {
+static void test_factory_returns_nullptr_when_no_mode(TestContext& ctx) {
     Scenario s;
     s.game_mode_config.type = "";
     auto mode = create_game_mode(s);
-    CHECK(mode == nullptr, "factory returns nullptr for empty type");
+    ctx.check(mode == nullptr, "factory returns nullptr for empty type");
 }
 
-static void test_factory_returns_asset_protection() {
+static void test_factory_returns_asset_protection(TestContext& ctx) {
     Scenario s;
     s.game_mode_config.type = "asset_protection";
     auto mode = create_game_mode(s);
-    CHECK(mode != nullptr, "factory returns non-null for asset_protection");
+    ctx.check(mode != nullptr, "factory returns non-null for asset_protection");
 }
 
-static void test_factory_throws_on_unknown_type() {
+static void test_factory_throws_on_unknown_type(TestContext& ctx) {
     Scenario s;
     s.game_mode_config.type = "unknown_mode";
     bool threw = false;
@@ -99,12 +99,12 @@ static void test_factory_throws_on_unknown_type() {
     } catch (const std::runtime_error&) {
         threw = true;
     }
-    CHECK(threw, "factory throws on unknown game_mode type");
+    ctx.check(threw, "factory throws on unknown game_mode type");
 }
 
 // ── Engine integration tests ──
 
-static void test_no_game_mode_engine_works() {
+static void test_no_game_mode_engine_works(TestContext& ctx) {
     Scenario scn = make_asset_protection_scenario();
     scn.game_mode_config.type = "";
 
@@ -115,15 +115,15 @@ static void test_no_game_mode_engine_works() {
     for (int t = 0; t < 10; ++t)
         engine.step(t, hooks);
 
-    CHECK(!engine.has_game_mode(), "engine reports no game mode");
-    CHECK(!engine.game_mode_result().finished, "result is not finished");
+    ctx.check(!engine.has_game_mode(), "engine reports no game mode");
+    ctx.check(!engine.game_mode_result().finished, "result is not finished");
 }
 
 // ── AssetProtection mode direct tests ──
 // These test the game mode interface directly, bypassing the engagement
 // system (which has a hardcoded stub gate that rejects all engagements).
 
-static void test_asset_destroyed_triggers_win() {
+static void test_asset_destroyed_triggers_win(TestContext& ctx) {
     Scenario scn = make_asset_protection_scenario();
     AssetProtectionMode mode;
     mode.init(scn, scn.entities);
@@ -133,18 +133,18 @@ static void test_asset_destroyed_triggers_win() {
 
     // Not finished yet — asset still has health
     auto r1 = mode.on_tick_end(5, scn.entities);
-    CHECK(!r1.finished, "not finished after partial damage");
+    ctx.check(!r1.finished, "not finished after partial damage");
 
     // Kill the asset
     mode.on_entity_damaged(6, 10, 50, 0);
 
     // Now it should be finished
     auto r2 = mode.on_tick_end(6, scn.entities);
-    CHECK(r2.finished, "game finished after asset destroyed");
-    CHECK(r2.winning_team == 1, "team 1 wins when team 0 asset destroyed");
+    ctx.check(r2.finished, "game finished after asset destroyed");
+    ctx.check(r2.winning_team == 1, "team 1 wins when team 0 asset destroyed");
 }
 
-static void test_asset_destroyed_hook_fires() {
+static void test_asset_destroyed_hook_fires(TestContext& ctx) {
     Scenario scn = make_asset_protection_scenario();
     auto mode = create_game_mode(scn);
 
@@ -161,15 +161,15 @@ static void test_asset_destroyed_hook_fires() {
     // Next tick should trigger game end
     engine.step(1, hooks);
 
-    CHECK(engine.game_mode_result().finished, "game ended via engine");
-    CHECK(hooks.results.size() > 0, "game mode end hook fired");
+    ctx.check(engine.game_mode_result().finished, "game ended via engine");
+    ctx.check(hooks.results.size() > 0, "game mode end hook fired");
     if (!hooks.results.empty()) {
-        CHECK(hooks.results[0].winning_team == 1,
+        ctx.check(hooks.results[0].winning_team == 1,
               "hook reports team 1 wins");
     }
 }
 
-static void test_time_expiry_healthier_wins() {
+static void test_time_expiry_healthier_wins(TestContext& ctx) {
     Scenario scn = make_asset_protection_scenario();
     scn.ticks = 5;
 
@@ -187,15 +187,15 @@ static void test_time_expiry_healthier_wins() {
 
     // Not finished at tick 3 (last tick is 4)
     auto r1 = mode.on_tick_end(3, entities);
-    CHECK(!r1.finished, "not finished before last tick");
+    ctx.check(!r1.finished, "not finished before last tick");
 
     // Finished at last tick (tick 4 = ticks-1)
     auto r2 = mode.on_tick_end(4, entities);
-    CHECK(r2.finished, "finished at time expiry");
-    CHECK(r2.winning_team == 1, "team 1 wins with healthier asset");
+    ctx.check(r2.finished, "finished at time expiry");
+    ctx.check(r2.winning_team == 1, "team 1 wins with healthier asset");
 }
 
-static void test_time_expiry_draw() {
+static void test_time_expiry_draw(TestContext& ctx) {
     Scenario scn = make_asset_protection_scenario();
     scn.ticks = 5;
 
@@ -204,11 +204,11 @@ static void test_time_expiry_draw() {
 
     // No damage — both assets at full health
     auto r = mode.on_tick_end(4, scn.entities);
-    CHECK(r.finished, "finished at time expiry");
-    CHECK(r.winning_team == -1, "draw when assets have equal health");
+    ctx.check(r.finished, "finished at time expiry");
+    ctx.check(r.winning_team == -1, "draw when assets have equal health");
 }
 
-static void test_second_asset_destroyed() {
+static void test_second_asset_destroyed(TestContext& ctx) {
     Scenario scn = make_asset_protection_scenario();
     AssetProtectionMode mode;
     mode.init(scn, scn.entities);
@@ -217,13 +217,13 @@ static void test_second_asset_destroyed() {
     mode.on_entity_damaged(3, 11, 100, 0);
 
     auto r = mode.on_tick_end(3, scn.entities);
-    CHECK(r.finished, "game finished when team 1 asset destroyed");
-    CHECK(r.winning_team == 0, "team 0 wins when team 1 asset destroyed");
+    ctx.check(r.finished, "game finished when team 1 asset destroyed");
+    ctx.check(r.winning_team == 0, "team 0 wins when team 1 asset destroyed");
 }
 
 // ── Validation tests ──
 
-static void test_asset_init_fails_missing_entity() {
+static void test_asset_init_fails_missing_entity(TestContext& ctx) {
     Scenario scn = make_asset_protection_scenario();
     scn.game_mode_config.asset_entity_ids.push_back(999);
 
@@ -234,10 +234,10 @@ static void test_asset_init_fails_missing_entity() {
     } catch (const std::runtime_error&) {
         threw = true;
     }
-    CHECK(threw, "init throws when asset entity not found");
+    ctx.check(threw, "init throws when asset entity not found");
 }
 
-static void test_asset_init_fails_no_team() {
+static void test_asset_init_fails_no_team(TestContext& ctx) {
     Scenario scn = make_asset_protection_scenario();
     for (auto& e : scn.entities) {
         if (e.id == 10) e.team = -1;
@@ -250,15 +250,15 @@ static void test_asset_init_fails_no_team() {
     } catch (const std::runtime_error&) {
         threw = true;
     }
-    CHECK(threw, "init throws when asset entity has no team");
+    ctx.check(threw, "init throws when asset entity has no team");
 }
 
-static void test_team_field_default() {
+static void test_team_field_default(TestContext& ctx) {
     ScenarioEntity e;
-    CHECK(e.team == -1, "default team is -1 (unaffiliated)");
+    ctx.check(e.team == -1, "default team is -1 (unaffiliated)");
 }
 
-static void test_non_asset_damage_ignored() {
+static void test_non_asset_damage_ignored(TestContext& ctx) {
     Scenario scn = make_asset_protection_scenario();
     AssetProtectionMode mode;
     mode.init(scn, scn.entities);
@@ -268,27 +268,23 @@ static void test_non_asset_damage_ignored() {
 
     // Should not end the game
     auto r = mode.on_tick_end(1, scn.entities);
-    CHECK(!r.finished, "non-asset damage does not end game");
+    ctx.check(!r.finished, "non-asset damage does not end game");
 }
 
 int main() {
-    std::printf("Running game mode tests...\n");
-
-    test_factory_returns_nullptr_when_no_mode();
-    test_factory_returns_asset_protection();
-    test_factory_throws_on_unknown_type();
-    test_no_game_mode_engine_works();
-
-    test_asset_destroyed_triggers_win();
-    test_asset_destroyed_hook_fires();
-    test_time_expiry_healthier_wins();
-    test_time_expiry_draw();
-    test_second_asset_destroyed();
-    test_non_asset_damage_ignored();
-
-    test_asset_init_fails_missing_entity();
-    test_asset_init_fails_no_team();
-    test_team_field_default();
-
-    TEST_REPORT();
+    return run_test_suite("game mode", [](TestContext& ctx) {
+    test_factory_returns_nullptr_when_no_mode(ctx);
+    test_factory_returns_asset_protection(ctx);
+    test_factory_throws_on_unknown_type(ctx);
+    test_no_game_mode_engine_works(ctx);
+    test_asset_destroyed_triggers_win(ctx);
+    test_asset_destroyed_hook_fires(ctx);
+    test_time_expiry_healthier_wins(ctx);
+    test_time_expiry_draw(ctx);
+    test_second_asset_destroyed(ctx);
+    test_non_asset_damage_ignored(ctx);
+    test_asset_init_fails_missing_entity(ctx);
+    test_asset_init_fails_no_team(ctx);
+    test_team_field_default(ctx);
+    });
 }

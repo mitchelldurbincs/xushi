@@ -4,6 +4,7 @@
 #include "invariants.h"
 #include "engagement.h"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 // FNV-1a hash of entity positions and belief state.
@@ -75,24 +76,60 @@ void SimEngine::init(const Scenario& scn, Policy* policy, GameMode* game_mode) {
 }
 
 void SimEngine::step(int tick, TickHooks& hooks) {
-    const Scenario& scn = *scn_;
-
     // Game mode: tick start
     if (game_mode_)
         game_mode_->on_tick_start(tick, entities_);
 
-    // Cooldowns tick down once per simulation step.
+    const auto run_phase = [&](const char* phase, auto&& fn) {
+        const auto t0 = std::chrono::steady_clock::now();
+        fn();
+        const auto t1 = std::chrono::steady_clock::now();
+        const std::chrono::duration<double, std::micro> elapsed = t1 - t0;
+        hooks.on_phase_timing(phase, elapsed.count());
+    };
+
+    run_phase("cooldowns", [&] { tick_cooldowns(); });
+    run_phase("movement", [&] { tick_movement(tick, hooks); });
+    run_phase("sensing", [&] { tick_sensing(tick, hooks); });
+
+    std::vector<Message> delivered;
+    run_phase("communication", [&] { tick_communication(tick, delivered); });
+    run_phase("belief", [&] { tick_belief(tick, hooks, delivered); });
+    run_phase("actions", [&] { tick_actions(tick, hooks); });
+    run_phase("tasks", [&] { tick_tasks(tick, hooks); });
+    run_phase("periodic_snapshots", [&] { tick_periodic_snapshots(tick, hooks); });
+
+    // ── Game mode: tick end ──
+    if (game_mode_) {
+        last_game_mode_result_ = game_mode_->on_tick_end(tick, entities_);
+        if (last_game_mode_result_.finished)
+            hooks.on_game_mode_end(tick, last_game_mode_result_);
+    }
+}
+
+void SimEngine::tick_cooldowns() {
     for (auto& e : entities_) {
         if (e.cooldown_ticks_remaining > 0)
             --e.cooldown_ticks_remaining;
     }
+}
 
-    // ── Movement ── task override > policy override > default
+void SimEngine::move_toward_target(ScenarioEntity& entity, const Vec2& target) const {
+    const Scenario& scn = *scn_;
+    const Vec2 diff = target - entity.position;
+    const float dist = diff.length();
+    const float step = entity.speed * scn.dt;
+    if (dist > kEpsilon && step < dist)
+        entity.position = entity.position + diff * (step / dist);
+    else if (dist > kEpsilon)
+        entity.position = target;
+}
+
+void SimEngine::tick_movement(int tick, TickHooks& hooks) {
+    const Scenario& scn = *scn_;
     for (auto& e : entities_) {
-        // Dead entities don't move
         if (e.vitality <= 0) continue;
 
-        // Engagement stop: hold position when enemy combatant is in weapon range
         if (e.can_engage && !e.allowed_effect_profile_indices.empty()) {
             int ep_idx = e.allowed_effect_profile_indices[0];
             float engage_range = 0.0f;
@@ -119,16 +156,11 @@ void SimEngine::step(int tick, TickHooks& hooks) {
 
         auto task_it = active_tasks_.find(e.id);
         if (task_it != active_tasks_.end()) {
-            Vec2 diff = task_it->second.target_position - e.position;
-            float dist = diff.length();
-            float step = e.speed * scn.dt;
-            if (dist > kEpsilon && step < dist)
-                e.position = e.position + diff * (step / dist);
-            else if (dist > kEpsilon)
-                e.position = task_it->second.target_position;
+            move_toward_target(e, task_it->second.target_position);
             hooks.on_entity_moved(tick, e.id, e.position);
             continue;
         }
+
         if (e.can_sense) {
             PolicyObservation pobs;
             pobs.id = e.id;
@@ -150,21 +182,14 @@ void SimEngine::step(int tick, TickHooks& hooks) {
                     }
                 }
             }
-            {
-                auto target = policy_->get_move_target(pobs);
-                if (target) {
-                    Vec2 diff = *target - e.position;
-                    float dist = diff.length();
-                    float step = e.speed * scn.dt;
-                    if (dist > kEpsilon && step < dist)
-                        e.position = e.position + diff * (step / dist);
-                    else if (dist > kEpsilon)
-                        e.position = *target;
-                    hooks.on_entity_moved(tick, e.id, e.position);
-                    continue;
-                }
+            auto target = policy_->get_move_target(pobs);
+            if (target) {
+                move_toward_target(e, *target);
+                hooks.on_entity_moved(tick, e.id, e.position);
+                continue;
             }
         }
+
         auto event = update_movement(e, scn.dt, rng_);
         if (!e.waypoints.empty() || e.speed > 0.0f)
             hooks.on_entity_moved(tick, e.id, e.position);
@@ -172,10 +197,12 @@ void SimEngine::step(int tick, TickHooks& hooks) {
             hooks.on_waypoint_arrival(tick, e.id, event.waypoint_index, e.position);
     }
     hooks.on_positions_check(entities_);
+}
 
-    // ── Sensing ──
+void SimEngine::tick_sensing(int tick, TickHooks& hooks) {
+    const Scenario& scn = *scn_;
     for (auto* sensor : sensors_) {
-        if (sensor->vitality <= 0) continue;  // dead sensors don't sense
+        if (sensor->vitality <= 0) continue;
         std::vector<EntityId> detected_targets;
         for (auto* obs_ent : observables_) {
             if (sensor->id == obs_ent->id) continue;
@@ -189,27 +216,21 @@ void SimEngine::step(int tick, TickHooks& hooks) {
                                   scn.perception.miss_rate,
                                   obs_ent->class_id,
                                   scn.perception.class_confusion_rate);
-
             if (detected) {
                 stats_.detections_generated++;
                 detected_targets.push_back(obs_ent->id);
-
                 if (sensor->can_track)
                     beliefs_[sensor->id].update(obs, tick);
-
                 hooks.on_detection(tick, obs);
 
                 MessagePayload payload;
                 payload.type = MessagePayload::OBSERVATION;
                 payload.observation = obs;
-
                 for (auto* tracker : trackers_) {
-                    // Team-filtered comms: don't share intel across teams
                     if (sensor->team >= 0 && tracker->team >= 0 && sensor->team != tracker->team)
                         continue;
                     float dist = (tracker->position - sensor->position).length();
-                    int dt = comms_.send(sensor->id, tracker->id, payload, tick,
-                                         dist, scn.channel, rng_);
+                    int dt = comms_.send(sensor->id, tracker->id, payload, tick, dist, scn.channel, rng_);
                     if (dt >= 0) {
                         stats_.messages_sent++;
                         hooks.on_msg_sent(tick, sensor->id, tracker->id, dt);
@@ -229,7 +250,6 @@ void SimEngine::step(int tick, TickHooks& hooks) {
                 detected_targets, scn.belief.negative_evidence_factor);
         }
 
-        // False positive generation
         if (scn.perception.false_positive_rate > 0.0f &&
             rng_.uniform() < scn.perception.false_positive_rate) {
             float angle = rng_.uniform() * kTau;
@@ -254,12 +274,10 @@ void SimEngine::step(int tick, TickHooks& hooks) {
             payload.type = MessagePayload::OBSERVATION;
             payload.observation = phantom;
             for (auto* tracker : trackers_) {
-                // Team-filtered comms: don't share intel across teams
                 if (sensor->team >= 0 && tracker->team >= 0 && sensor->team != tracker->team)
                     continue;
                 float dist = (tracker->position - sensor->position).length();
-                int dt = comms_.send(sensor->id, tracker->id, payload, tick,
-                                     dist, scn.channel, rng_);
+                int dt = comms_.send(sensor->id, tracker->id, payload, tick, dist, scn.channel, rng_);
                 if (dt >= 0) {
                     stats_.messages_sent++;
                     hooks.on_msg_sent(tick, sensor->id, tracker->id, dt);
@@ -270,19 +288,20 @@ void SimEngine::step(int tick, TickHooks& hooks) {
             }
         }
     }
+}
 
-    // ── Communication ──
-    std::vector<Message> delivered;
+void SimEngine::tick_communication(int tick, std::vector<Message>& delivered) {
     comms_.deliver(tick, delivered);
+}
 
-    // ── Track expirations (snapshot before update) ──
+void SimEngine::tick_belief(int tick, TickHooks& hooks, const std::vector<Message>& delivered) {
+    const Scenario& scn = *scn_;
     std::map<EntityId, std::vector<EntityId>> tracked_before;
     for (auto& [gid, belief] : beliefs_) {
         for (const auto& t : belief.tracks)
             tracked_before[gid].push_back(t.target);
     }
 
-    // ── Belief ──
     for (const auto& msg : delivered) {
         stats_.messages_delivered++;
         auto it = beliefs_.find(msg.receiver);
@@ -292,11 +311,9 @@ void SimEngine::step(int tick, TickHooks& hooks) {
     for (auto& [gid, belief] : beliefs_)
         belief.decay(tick, scn.dt, scn.belief);
 
-    // Invariant checks via hook
     for (auto& [gid, belief] : beliefs_)
         hooks.on_belief_invariant_check(belief);
 
-    // Aggregate stats
     int total_active = 0;
     for (auto& [gid, belief] : beliefs_) {
         total_active += static_cast<int>(belief.tracks.size());
@@ -307,11 +324,9 @@ void SimEngine::step(int tick, TickHooks& hooks) {
     }
     stats_.tracks_active = total_active;
 
-    // Delivered message hooks
     for (const auto& msg : delivered)
         hooks.on_msg_delivered(tick, msg.sender, msg.receiver);
 
-    // Track update/expired hooks
     for (auto& [gid, belief] : beliefs_) {
         for (const auto& t : belief.tracks)
             hooks.on_track_update(tick, gid, t);
@@ -320,11 +335,9 @@ void SimEngine::step(int tick, TickHooks& hooks) {
                 hooks.on_track_expired(tick, gid, id);
         }
     }
+}
 
-    // ��─ Action adjudication ──
-    adjudicate_actions(tick, hooks);
-
-    // ── Task completion ──
+void SimEngine::tick_tasks(int tick, TickHooks& hooks) {
     std::vector<EntityId> completed_tasks;
     for (const auto& [eid, task] : active_tasks_) {
         ScenarioEntity* assigned = nullptr;
@@ -352,7 +365,6 @@ void SimEngine::step(int tick, TickHooks& hooks) {
     for (EntityId eid : completed_tasks)
         active_tasks_.erase(eid);
 
-    // ── Task assignment ── assign VERIFY for stale, low-confidence tracks
     for (auto* tracker_ent : trackers_) {
         auto& belief = beliefs_[tracker_ent->id];
         for (const auto& trk : belief.tracks) {
@@ -390,19 +402,17 @@ void SimEngine::step(int tick, TickHooks& hooks) {
             }
         }
     }
+}
 
-    // ── World hash every 10 ticks ──
+void SimEngine::tick_actions(int tick, TickHooks& hooks) {
+    adjudicate_actions(tick, hooks);
+}
+
+void SimEngine::tick_periodic_snapshots(int tick, TickHooks& hooks) {
     if (tick % 10 == 0) {
         uint64_t hash = compute_world_hash();
         hooks.on_world_hash(tick, hash);
         hooks.on_stats_snapshot(tick, stats_);
-    }
-
-    // ── Game mode: tick end ──
-    if (game_mode_) {
-        last_game_mode_result_ = game_mode_->on_tick_end(tick, entities_);
-        if (last_game_mode_result_.finished)
-            hooks.on_game_mode_end(tick, last_game_mode_result_);
     }
 }
 
@@ -501,6 +511,7 @@ void SimEngine::adjudicate_actions(int tick, TickHooks& hooks) {
                 gate_inputs.target_truth = target;
                 gate_inputs.effect_profile_index = req.effect_profile_index;
                 gate_inputs.effect_profile = profile;
+                gate_inputs.engagement_rules = scn_ ? &scn_->engagement_rules : nullptr;
                 gate_inputs.world.map = &map_;
                 gate_inputs.world.tick = tick;
                 gate_inputs.world.entities = &entities_;

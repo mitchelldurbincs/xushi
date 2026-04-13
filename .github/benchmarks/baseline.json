@@ -1,0 +1,108 @@
+{
+  "mode": "smoke",
+  "benchmarks": {
+    "default": {
+      "name": "default",
+      "scenario": "scenarios/default.json",
+      "benchmark_type": "strict",
+      "runs": 3,
+      "samples": {
+        "throughput_ticks_per_sec": [
+          204312.0,
+          225328.0,
+          190972.0
+        ],
+        "per_tick_ms": [
+          0.005,
+          0.004,
+          0.005
+        ],
+        "sensing_ms": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "metrics": {
+        "throughput_ticks_per_sec": 206870.66666666666,
+        "sensing_phase_ms": 0.0,
+        "p95_runtime_ms": 0.005
+      }
+    },
+    "benchmark_dense": {
+      "name": "benchmark_dense",
+      "scenario": "scenarios/benchmark_dense.json",
+      "benchmark_type": "noise_tolerant",
+      "runs": 2,
+      "samples": {
+        "throughput_ticks_per_sec": [
+          105676.0,
+          98492.0
+        ],
+        "per_tick_ms": [
+          0.009,
+          0.01
+        ],
+        "sensing_ms": [
+          0.0,
+          0.0
+        ]
+      },
+      "metrics": {
+        "throughput_ticks_per_sec": 102084.0,
+        "sensing_phase_ms": 0.0,
+        "p95_runtime_ms": 0.01
+      }
+    },
+    "noisy_perception": {
+      "name": "noisy_perception",
+      "scenario": "scenarios/noisy_perception.json",
+      "benchmark_type": "noise_tolerant",
+      "runs": 2,
+      "samples": {
+        "throughput_ticks_per_sec": [
+          137042.0,
+          123041.0
+        ],
+        "per_tick_ms": [
+          0.007,
+          0.008
+        ],
+        "sensing_ms": [
+          0.0,
+          0.0
+        ]
+      },
+      "metrics": {
+        "throughput_ticks_per_sec": 130041.5,
+        "sensing_phase_ms": 0.0,
+        "p95_runtime_ms": 0.008
+      }
+    },
+    "multi_agent": {
+      "name": "multi_agent",
+      "scenario": "scenarios/multi_agent.json",
+      "benchmark_type": "strict",
+      "runs": 2,
+      "samples": {
+        "throughput_ticks_per_sec": [
+          46251.0,
+          72240.0
+        ],
+        "per_tick_ms": [
+          0.022,
+          0.014
+        ],
+        "sensing_ms": [
+          0.0,
+          0.0
+        ]
+      },
+      "metrics": {
+        "throughput_ticks_per_sec": 59245.5,
+        "sensing_phase_ms": 0.0,
+        "p95_runtime_ms": 0.022
+      }
+    }
+  }
+}

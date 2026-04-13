@@ -8,7 +8,7 @@
 // Golden tests from the simulation contract (section 14.3).
 // Each test builds a tiny scenario in code and asserts expected outcomes.
 
-static void test_los_blocked_no_detection() {
+static void test_los_blocked_no_detection(TestContext& ctx) {
     // Obstacle directly between drone and target.
     Map map;
     map.obstacles.push_back({{4, 4}, {6, 6}});
@@ -23,20 +23,20 @@ static void test_los_blocked_no_detection() {
             detections++;
     }
 
-    CHECK(detections == 0, "LOS blocked => no detection over 20 ticks");
+    ctx.check(detections == 0, "LOS blocked => no detection over 20 ticks");
 }
 
-static void test_clear_los_detection_on_tick_0() {
+static void test_clear_los_detection_on_tick_0(TestContext& ctx) {
     // No obstacles, target within range.
     Map map;
     Rng rng(42);
     Observation obs{};
     bool detected = sense(map, {0, 0}, 0, {10, 0}, 1, 50.0f, 0, rng, obs);
-    CHECK(detected, "clear LOS => detection on tick 0");
-    CHECK(obs.tick == 0, "observation has correct tick");
+    ctx.check(detected, "clear LOS => detection on tick 0");
+    ctx.check(obs.tick == 0, "observation has correct tick");
 }
 
-static void test_delayed_comms_belief_lags() {
+static void test_delayed_comms_belief_lags(TestContext& ctx) {
     // Drone detects on tick 0, channel latency = 5.
     // Ground should have no track until tick 5.
     Map map;
@@ -66,19 +66,19 @@ static void test_delayed_comms_belief_lags() {
         if (belief.find_track(1) != nullptr)
             no_track_before = false;
     }
-    CHECK(no_track_before, "delayed comms => no track before delivery tick");
+    ctx.check(no_track_before, "delayed comms => no track before delivery tick");
 
     // Tick 5: message arrives, ground gets track
     std::vector<Message> delivered;
     comms.deliver(5, delivered);
-    CHECK(delivered.size() == 1, "message delivered on tick 5");
+    ctx.check(delivered.size() == 1, "message delivered on tick 5");
     for (const auto& msg : delivered)
         belief.update(msg.payload.observation, 5);
     belief.decay(5, 1.0f, cfg);
-    CHECK(belief.find_track(1) != nullptr, "delayed comms => track appears at delivery tick");
+    ctx.check(belief.find_track(1) != nullptr, "delayed comms => track appears at delivery tick");
 }
 
-static void test_stale_track_expires_by_tick_n() {
+static void test_stale_track_expires_by_tick_n(TestContext& ctx) {
     // Single observation at tick 0, then silence.
     // With fresh_ticks=3, stale_ticks=5, track should expire at tick 9.
     BeliefConfig cfg;
@@ -93,14 +93,14 @@ static void test_stale_track_expires_by_tick_n() {
     for (int tick = 1; tick <= 8; ++tick)
         belief.decay(tick, 1.0f, cfg);
 
-    CHECK(belief.find_track(1) != nullptr, "track alive at tick 8 (fresh=3 + stale=5)");
+    ctx.check(belief.find_track(1) != nullptr, "track alive at tick 8 (fresh=3 + stale=5)");
 
     // Track should expire at tick 9
     belief.decay(9, 1.0f, cfg);
-    CHECK(belief.find_track(1) == nullptr, "stale track expired by tick 9");
+    ctx.check(belief.find_track(1) == nullptr, "stale track expired by tick 9");
 }
 
-static void test_distance_comms_latency_calculation() {
+static void test_distance_comms_latency_calculation(TestContext& ctx) {
     // Two agents: near (10m from target) and far (200m from target).
     // Channel: base_latency=2, per_distance=0.05, loss=0.
     // Near agent self-observes (distance 0 to self for comms), but the
@@ -118,14 +118,14 @@ static void test_distance_comms_latency_calculation() {
     payload.observation = {0, 0, 2, {20, 50}, 1.0f, 0.9f};
 
     int delivery = comms.send(0, 1, payload, 0, distance, ch, rng);
-    CHECK(delivery == 12, "distance comms: 200m delivery at tick 12 (base 2 + ceil(200*0.05)=10)");
+    ctx.check(delivery == 12, "distance comms: 200m delivery at tick 12 (base 2 + ceil(200*0.05)=10)");
 
     // Simulate near sensor sending to itself (distance 0)
     int self_delivery = comms.send(0, 0, payload, 0, 0.0f, ch, rng);
-    CHECK(self_delivery == 2, "distance comms: 0m delivery at tick 2 (base only)");
+    ctx.check(self_delivery == 2, "distance comms: 0m delivery at tick 2 (base only)");
 }
 
-static void test_distance_comms_far_belief_lags_near() {
+static void test_distance_comms_far_belief_lags_near(TestContext& ctx) {
     // Near sensor detects target on tick 0.
     // Near sensor (also tracker) gets immediate self-update.
     // Far sensor gets message after distance-dependent delay.
@@ -143,7 +143,7 @@ static void test_distance_comms_far_belief_lags_near() {
 
     // Near sensor updates own belief immediately
     near_belief.update(obs, 0);
-    CHECK(near_belief.find_track(2) != nullptr, "distance comms: near has track at tick 0");
+    ctx.check(near_belief.find_track(2) != nullptr, "distance comms: near has track at tick 0");
 
     // Send to far sensor (200m away)
     MessagePayload payload;
@@ -162,24 +162,24 @@ static void test_distance_comms_far_belief_lags_near() {
         if (far_belief.find_track(2) != nullptr)
             no_track_before = false;
     }
-    CHECK(no_track_before, "distance comms: far has no track before delivery");
+    ctx.check(no_track_before, "distance comms: far has no track before delivery");
 
     // At delivery tick, far sensor gets the track
     std::vector<Message> delivered;
     comms.deliver(delivery_tick, delivered);
-    CHECK(delivered.size() == 1, "distance comms: message delivered at expected tick");
+    ctx.check(delivered.size() == 1, "distance comms: message delivered at expected tick");
     for (const auto& msg : delivered)
         far_belief.update(msg.payload.observation, delivery_tick);
-    CHECK(far_belief.find_track(2) != nullptr, "distance comms: far has track at delivery tick");
+    ctx.check(far_belief.find_track(2) != nullptr, "distance comms: far has track at delivery tick");
 }
 
 int main() {
-    std::printf("Running golden tests...\n");
-    test_los_blocked_no_detection();
-    test_clear_los_detection_on_tick_0();
-    test_delayed_comms_belief_lags();
-    test_stale_track_expires_by_tick_n();
-    test_distance_comms_latency_calculation();
-    test_distance_comms_far_belief_lags_near();
-    TEST_REPORT();
+    return run_test_suite("golden", [](TestContext& ctx) {
+    test_los_blocked_no_detection(ctx);
+    test_clear_los_detection_on_tick_0(ctx);
+    test_delayed_comms_belief_lags(ctx);
+    test_stale_track_expires_by_tick_n(ctx);
+    test_distance_comms_latency_calculation(ctx);
+    test_distance_comms_far_belief_lags_near(ctx);
+    });
 }
