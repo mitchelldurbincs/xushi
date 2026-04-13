@@ -13,6 +13,7 @@ add_library(xushi_core STATIC
     src/json.cpp
     src/scenario.cpp
     src/replay.cpp
+    src/path_resolve.cpp
     src/stats.cpp
     src/sim.cpp
     src/sim_engine.cpp)
@@ -89,6 +90,10 @@ target_link_libraries(test_scenario xushi_core)
 add_test(NAME scenario COMMAND test_scenario)
 set_tests_properties(scenario PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+
+add_executable(test_replay_path_resolution tests/test_replay_path_resolution.cpp)
+target_link_libraries(test_replay_path_resolution xushi_core)
+add_test(NAME replay_path_resolution COMMAND test_replay_path_resolution)
 add_executable(test_replay tests/test_replay.cpp)
 target_link_libraries(test_replay xushi_core)
 add_test(NAME replay COMMAND test_replay)
