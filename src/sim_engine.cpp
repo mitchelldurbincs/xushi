@@ -89,6 +89,34 @@ void SimEngine::step(int tick, TickHooks& hooks) {
 
     // ── Movement ── task override > policy override > default
     for (auto& e : entities_) {
+        // Dead entities don't move
+        if (e.vitality <= 0) continue;
+
+        // Engagement stop: hold position when enemy combatant is in weapon range
+        if (e.can_engage && !e.allowed_effect_profile_indices.empty()) {
+            int ep_idx = e.allowed_effect_profile_indices[0];
+            float engage_range = 0.0f;
+            if (ep_idx >= 0 && ep_idx < static_cast<int>(scn.effect_profiles.size()))
+                engage_range = scn.effect_profiles[ep_idx].range;
+            if (engage_range > 0.0f) {
+                bool enemy_in_range = false;
+                for (const auto& other : entities_) {
+                    if (other.id == e.id) continue;
+                    if (!other.can_engage || other.vitality <= 0) continue;
+                    if (e.team >= 0 && other.team >= 0 && e.team == other.team) continue;
+                    float dist = (other.position - e.position).length();
+                    if (dist <= engage_range) {
+                        enemy_in_range = true;
+                        break;
+                    }
+                }
+                if (enemy_in_range) {
+                    hooks.on_entity_moved(tick, e.id, e.position);
+                    continue;
+                }
+            }
+        }
+
         auto task_it = active_tasks_.find(e.id);
         if (task_it != active_tasks_.end()) {
             Vec2 diff = task_it->second.target_position - e.position;
@@ -147,6 +175,7 @@ void SimEngine::step(int tick, TickHooks& hooks) {
 
     // ── Sensing ──
     for (auto* sensor : sensors_) {
+        if (sensor->vitality <= 0) continue;  // dead sensors don't sense
         std::vector<EntityId> detected_targets;
         for (auto* obs_ent : observables_) {
             if (sensor->id == obs_ent->id) continue;

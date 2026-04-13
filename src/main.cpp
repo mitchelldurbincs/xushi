@@ -286,6 +286,7 @@ int main(int argc, char* argv[]) {
         // Auto-engage: actors with can_engage attempt to engage fresh enemy tracks
         for (const auto& e : engine.get_entities()) {
             if (!e.can_engage) continue;
+            if (e.vitality <= 0) continue;
             if (e.cooldown_ticks_remaining > 0) continue;
             if (e.allowed_effect_profile_indices.empty()) continue;
             auto bit = engine.get_beliefs().find(e.id);
