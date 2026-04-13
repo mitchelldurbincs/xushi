@@ -304,6 +304,40 @@ static void test_invalid_effect_profile_reference(TestContext& ctx) {
     std::remove(path);
 }
 
+static void test_invalid_effect_profile_hit_probability() {
+    const char* path = "tests/tmp_invalid_hit_probability.json";
+    write_temp_scenario(path,
+        "{"
+        "\"seed\":1,"
+        "\"obstacles\":[],"
+        "\"effect_profiles\":["
+        "{\"name\":\"std\",\"range\":20,\"hit_probability\":1.25}"
+        "],"
+        "\"entities\":["
+        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0],\"can_sense\":true},"
+        "{\"id\":1,\"type\":\"ground\",\"pos\":[1,0],\"vel\":[0,0],\"can_track\":true},"
+        "{\"id\":2,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0],\"is_observable\":true}"
+        "]"
+        "}");
+
+    bool caught = false;
+    std::string message;
+    try {
+        load_scenario(path);
+    } catch (const std::runtime_error& e) {
+        caught = true;
+        message = e.what();
+    }
+
+    CHECK(caught, "invalid effect profile hit_probability rejected");
+    CHECK(message.find(path) != std::string::npos, "invalid hit_probability includes path");
+    CHECK(message.find("effect_profiles[0].hit_probability") != std::string::npos,
+          "invalid hit_probability includes field");
+    CHECK(message.find("must be in [0, 1], got 1.25") != std::string::npos,
+          "invalid hit_probability includes range");
+    std::remove(path);
+}
+
 int main() {
     TestContext ctx;
     std::printf("Running scenario tests...\n");
