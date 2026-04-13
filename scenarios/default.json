@@ -29,7 +29,7 @@
       ],
       "can_sense": true,
       "can_engage": true,
-      "ammo_pool": 6,
+      "ammo": 6,
       "cooldown_ticks_remaining": 0,
       "allowed_effect_profile_indices": [
         0

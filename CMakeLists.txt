@@ -17,7 +17,9 @@ add_library(xushi_core STATIC
     src/stats.cpp
     src/sim.cpp
     src/sim_engine.cpp
-    src/engagement.cpp)
+    src/engagement.cpp
+    src/game_mode.cpp
+    src/asset_protection_mode.cpp)
 
 add_executable(xushi src/main.cpp)
 target_link_libraries(xushi xushi_core)
@@ -128,3 +130,7 @@ add_test(NAME action COMMAND test_action)
 add_executable(test_engagement tests/test_engagement.cpp)
 target_link_libraries(test_engagement xushi_core)
 add_test(NAME engagement COMMAND test_engagement)
+
+add_executable(test_game_mode tests/test_game_mode.cpp)
+target_link_libraries(test_game_mode xushi_core)
+add_test(NAME game_mode COMMAND test_game_mode)

@@ -132,7 +132,7 @@ void viewer_load(ViewerState& vs, const std::string& replay_path) {
     if (get_required_string(hdr, "type", header_context) != "header")
         throw std::runtime_error(header_context + ": expected type == 'header'");
 
-    const std::string& header_scenario_path = get_required_string(hdr, "scenario", header_context);
+    std::string header_scenario_path = get_required_string(hdr, "scenario", header_context);
     vs.scenario_path = resolve_scenario_path_from_replay(replay_path, header_scenario_path);
     int header_ticks = get_required_int(hdr, "ticks", header_context);
     double header_dt = get_required_number(hdr, "dt", header_context);
@@ -169,7 +169,7 @@ void viewer_load(ViewerState& vs, const std::string& replay_path) {
                 continue;
             }
 
-            const std::string& type = get_required_string(ev, "type", context);
+            std::string type = get_required_string(ev, "type", context);
 
             if (type == "detection") {
                 get_required_array(ev, "est_pos", 2, context);
@@ -188,7 +188,7 @@ void viewer_load(ViewerState& vs, const std::string& replay_path) {
                 if (type == "msg_sent") get_required_int(ev, "delivery_tick", context);
                 vs.frames[tick].messages.push_back(ev);
             } else if (type == "entity_pos") {
-                const auto& pos_arr = get_required_array(ev, "pos", 2, context);
+                auto pos_arr = get_required_array(ev, "pos", 2, context);
                 EntityId eid = static_cast<EntityId>(get_required_int(ev, "entity", context));
                 Vec2 pos = {static_cast<float>(pos_arr[0].as_number()),
                             static_cast<float>(pos_arr[1].as_number())};

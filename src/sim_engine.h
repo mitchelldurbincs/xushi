@@ -13,7 +13,10 @@
 #include "rng.h"
 #include <cstdint>
 #include <map>
+#include <string>
 #include <vector>
+
+#include "game_mode.h"
 
 // Hook interface for side effects. All methods are no-ops by default.
 // Callers override only the hooks they care about.
@@ -56,13 +59,17 @@ struct TickHooks {
 
     // Position invariant check (after movement)
     virtual void on_positions_check(const std::vector<ScenarioEntity>& /*entities*/) {}
+
+    // Game mode
+    virtual void on_game_mode_end(int /*tick*/, const GameModeResult& /*result*/) {}
 };
 
 // Shared simulation engine. Owns all mutable tick state.
 // Both headless and CLI paths call init() then step() in a loop.
 class SimEngine {
 public:
-    void init(const Scenario& scn, Policy* policy = nullptr);
+    void init(const Scenario& scn, Policy* policy = nullptr,
+              GameMode* game_mode = nullptr);
     void step(int tick, TickHooks& hooks);
 
     // Action queue — policies/controllers push requests, engine adjudicates
@@ -81,6 +88,10 @@ public:
     // World hash for determinism checking
     uint64_t compute_world_hash() const;
 
+    // Game mode result from the most recent tick (default: not finished)
+    bool has_game_mode() const { return game_mode_ != nullptr; }
+    const GameModeResult& game_mode_result() const { return last_game_mode_result_; }
+
 private:
     const Scenario* scn_ = nullptr;
     Map map_;
@@ -97,6 +108,10 @@ private:
     std::map<EntityId, Task> active_tasks_;
     int tasks_assigned_ = 0;
     int tasks_completed_ = 0;
+
+    // Game mode
+    GameMode* game_mode_ = nullptr;
+    GameModeResult last_game_mode_result_;
 
     // Action system
     std::vector<ActionRequest> pending_actions_;
