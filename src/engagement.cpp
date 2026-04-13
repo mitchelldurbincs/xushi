@@ -4,22 +4,17 @@
 #include <algorithm>
 
 namespace {
-constexpr float kDefaultEffectRange = 80.0f;
-constexpr float kEffectRangeStep = 20.0f;
-constexpr float kMaxTrackUncertainty = 20.0f;
-constexpr float kMinIdentityConfidence = 0.5f;
-constexpr int kMinCorroborationCount = 1;
-constexpr Vec2 kProtectedZoneCenter{0.0f, 0.0f};
-constexpr float kProtectedZoneRadius = 10.0f;
-constexpr float kFriendlyRiskRadius = 8.0f;
-
-float effect_profile_range(uint32_t effect_profile_index) {
-    return kDefaultEffectRange + static_cast<float>(effect_profile_index) * kEffectRangeStep;
+float effect_profile_range(uint32_t effect_profile_index,
+                           const Scenario::EngagementRulesConfig& rules) {
+    return rules.default_effect_range +
+        static_cast<float>(effect_profile_index) * rules.effect_range_step;
 }
 }
 
 EngagementGateResult compute_engagement_gates(const EngagementGateInputs& in) {
     EngagementGateResult out;
+    const Scenario::EngagementRulesConfig rules =
+        in.engagement_rules ? *in.engagement_rules : Scenario::EngagementRulesConfig{};
 
     // Capability: actor must be able to engage and have the requested effect profile
     const bool actor_has_capability = in.actor && in.actor->can_engage &&
@@ -59,19 +54,19 @@ EngagementGateResult compute_engagement_gates(const EngagementGateInputs& in) {
     if (in.target_track->status != TrackStatus::FRESH)
         out.failure_mask |= static_cast<uint32_t>(GateFailureReason::TrackTooStale);
 
-    if (in.target_track->uncertainty > kMaxTrackUncertainty)
+    if (in.target_track->uncertainty > rules.max_track_uncertainty)
         out.failure_mask |= static_cast<uint32_t>(GateFailureReason::TrackTooUncertain);
 
     // Identity threshold: use effect profile if available, otherwise fallback
     const float identity_threshold = in.effect_profile
-        ? in.effect_profile->identity_threshold : kMinIdentityConfidence;
+        ? in.effect_profile->identity_threshold : rules.min_identity_confidence;
     if (in.target_track->identity_confidence < identity_threshold)
         out.failure_mask |= static_cast<uint32_t>(GateFailureReason::IdentityTooWeak);
 
     // Corroboration threshold: use effect profile if available, otherwise fallback
     const float corroboration_threshold = in.effect_profile
         ? in.effect_profile->corroboration_threshold
-        : static_cast<float>(kMinCorroborationCount);
+        : static_cast<float>(rules.min_corroboration_count);
     if (static_cast<float>(in.target_track->corroboration_count) < corroboration_threshold)
         out.failure_mask |= static_cast<uint32_t>(GateFailureReason::NeedsCorroboration);
 
@@ -85,7 +80,7 @@ EngagementGateResult compute_engagement_gates(const EngagementGateInputs& in) {
 
     // Range: use effect profile if available, otherwise fallback formula
     const float max_effect_range = in.effect_profile
-        ? in.effect_profile->range : effect_profile_range(in.effect_profile_index);
+        ? in.effect_profile->range : effect_profile_range(in.effect_profile_index, rules);
     if (actor_to_target > max_effect_range)
         out.failure_mask |= static_cast<uint32_t>(GateFailureReason::OutOfRange);
 
@@ -99,8 +94,9 @@ EngagementGateResult compute_engagement_gates(const EngagementGateInputs& in) {
     }
 
     // Protected zone check
-    float protected_zone_distance = (in.target_truth->position - kProtectedZoneCenter).length();
-    if (protected_zone_distance <= kProtectedZoneRadius)
+    float protected_zone_distance =
+        (in.target_truth->position - rules.protected_zone_center).length();
+    if (protected_zone_distance <= rules.protected_zone_radius)
         out.failure_mask |= static_cast<uint32_t>(GateFailureReason::ProtectedZone);
 
     // Same-team engagement prevention (friendly fire)
@@ -117,7 +113,8 @@ EngagementGateResult compute_engagement_gates(const EngagementGateInputs& in) {
             // Only flag entities on the same team as the actor (or unaffiliated)
             if (entity.team >= 0 && in.actor->team >= 0 && entity.team != in.actor->team)
                 continue;
-            if ((entity.position - in.target_truth->position).length() <= kFriendlyRiskRadius) {
+            if ((entity.position - in.target_truth->position).length() <=
+                rules.friendly_risk_radius) {
                 out.failure_mask |= static_cast<uint32_t>(GateFailureReason::FriendlyRisk);
                 break;
             }
