@@ -283,6 +283,34 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // Auto-engage: actors with can_engage attempt to engage fresh enemy tracks
+        for (const auto& e : engine.get_entities()) {
+            if (!e.can_engage) continue;
+            if (e.cooldown_ticks_remaining > 0) continue;
+            if (e.allowed_effect_profile_indices.empty()) continue;
+            auto bit = engine.get_beliefs().find(e.id);
+            if (bit == engine.get_beliefs().end()) continue;
+            for (const auto& trk : bit->second.tracks) {
+                if (trk.status != TrackStatus::FRESH) continue;
+                // Find target entity to check team
+                const ScenarioEntity* target_ent = nullptr;
+                for (const auto& te : engine.get_entities()) {
+                    if (te.id == trk.target) { target_ent = &te; break; }
+                }
+                // Skip same-team targets
+                if (target_ent && e.team >= 0 && target_ent->team >= 0 &&
+                    e.team == target_ent->team)
+                    continue;
+                ActionRequest req;
+                req.actor = e.id;
+                req.type = ActionType::EngageTrack;
+                req.track_target = trk.target;
+                req.effect_profile_index = static_cast<uint32_t>(e.allowed_effect_profile_indices[0]);
+                engine.submit_action(req);
+                break;  // one engagement per actor per tick
+            }
+        }
+
         auto t0 = Clock::now();
         engine.step(tick, hooks);
         double tick_us = elapsed_us(t0);
