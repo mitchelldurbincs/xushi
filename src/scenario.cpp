@@ -84,6 +84,12 @@ Scenario load_scenario(const std::string& path) {
                 profile.number_or("corroboration_threshold", 0.0));
             p.cooldown_ticks = profile.int_or("cooldown_ticks", 0);
             p.ammo_cost = profile.int_or("ammo_cost", 0);
+
+            // Outcome resolution fields
+            p.hit_probability = static_cast<float>(profile.number_or("hit_probability", 1.0));
+            p.vitality_delta_min = profile.int_or("vitality_delta_min", 0);
+            p.vitality_delta_max = profile.int_or("vitality_delta_max", p.vitality_delta_min);
+
             if (profile.has("roe_flags")) {
                 for (const auto& flag : profile["roe_flags"].as_array())
                     p.roe_flags.push_back(flag.as_string());
@@ -117,11 +123,20 @@ Scenario load_scenario(const std::string& path) {
         if (ent.has("can_sense"))     e.can_sense     = ent["can_sense"].as_bool();
         if (ent.has("can_track"))     e.can_track     = ent["can_track"].as_bool();
         if (ent.has("is_observable")) e.is_observable = ent["is_observable"].as_bool();
+        if (ent.has("can_engage"))    e.can_engage    = ent["can_engage"].as_bool();
 
         if (ent.has("class_id"))      e.class_id = ent["class_id"].as_int();
-        if (ent.has("can_engage"))    e.can_engage = ent["can_engage"].as_bool();
-        e.ammo_pool = ent.int_or("ammo_pool", 0);
-        e.cooldown_ticks_remaining = ent.int_or("cooldown_ticks_remaining", 0);
+
+        // Vitality/health
+        if (ent.has("max_vitality"))  e.max_vitality = ent["max_vitality"].as_int();
+        if (ent.has("vitality"))      e.vitality = ent["vitality"].as_int();
+        if (e.vitality > e.max_vitality)
+            e.vitality = e.max_vitality;
+
+        // Engagement state
+        if (ent.has("ammo"))          e.ammo = ent["ammo"].as_int();
+        if (ent.has("cooldown_ticks_remaining"))
+            e.cooldown_ticks_remaining = ent["cooldown_ticks_remaining"].as_int();
         if (ent.has("allowed_effect_profile_indices")) {
             for (const auto& idx : ent["allowed_effect_profile_indices"].as_array())
                 e.allowed_effect_profile_indices.push_back(idx.as_int());
@@ -252,29 +267,21 @@ Scenario load_scenario(const std::string& path) {
     validate_non_negative(path, "perception.false_positive_rate", s.perception.false_positive_rate);
     validate_non_negative(path, "perception.class_confusion_rate", s.perception.class_confusion_rate);
 
+    // Validate effect profiles
     for (size_t i = 0; i < s.effect_profiles.size(); ++i) {
         const auto& p = s.effect_profiles[i];
         const std::string prefix = "effect_profiles[" + std::to_string(i) + "]";
-        if (p.name.empty())
-            throw make_field_error(path, prefix + ".name", "must be non-empty");
-        if (p.range <= 0.0f) {
-            throw make_field_error(path, prefix + ".range",
-                                   "must be > 0, got " + std::to_string(p.range));
+        if (p.hit_probability < 0.0f || p.hit_probability > 1.0f) {
+            throw make_field_error(path, prefix + ".hit_probability",
+                                   "must be in [0, 1], got " + std::to_string(p.hit_probability));
         }
-        if (p.identity_threshold < 0.0f || p.identity_threshold > 1.0f) {
-            throw make_field_error(
-                path, prefix + ".identity_threshold",
-                "must be in [0, 1], got " + std::to_string(p.identity_threshold));
-        }
-        if (p.corroboration_threshold < 0.0f || p.corroboration_threshold > 1.0f) {
-            throw make_field_error(
-                path, prefix + ".corroboration_threshold",
-                "must be in [0, 1], got " + std::to_string(p.corroboration_threshold));
+        if (p.vitality_delta_min > p.vitality_delta_max) {
+            throw make_field_error(path, prefix + ".vitality_delta",
+                                   "min > max is invalid");
         }
         if (p.cooldown_ticks < 0) {
-            throw make_field_error(
-                path, prefix + ".cooldown_ticks",
-                "must be >= 0, got " + std::to_string(p.cooldown_ticks));
+            throw make_field_error(path, prefix + ".cooldown_ticks",
+                                   "must be >= 0, got " + std::to_string(p.cooldown_ticks));
         }
         if (p.ammo_cost < 0) {
             throw make_field_error(path, prefix + ".ammo_cost",
@@ -282,13 +289,14 @@ Scenario load_scenario(const std::string& path) {
         }
     }
 
+    // Validate entities
     for (size_t i = 0; i < s.entities.size(); ++i) {
         const auto& e = s.entities[i];
         const std::string eprefix =
             "entities[" + std::to_string(i) + "] (id=" + std::to_string(e.id) + ")";
-        if (e.ammo_pool < 0) {
-            throw make_field_error(path, eprefix + ".ammo_pool",
-                                   "must be >= 0, got " + std::to_string(e.ammo_pool));
+        if (e.ammo < 0) {
+            throw make_field_error(path, eprefix + ".ammo",
+                                   "must be >= 0, got " + std::to_string(e.ammo));
         }
         if (e.cooldown_ticks_remaining < 0) {
             throw make_field_error(path, eprefix + ".cooldown_ticks_remaining",
@@ -304,7 +312,6 @@ Scenario load_scenario(const std::string& path) {
                     "references effect_profiles[" + std::to_string(idx) +
                         "] but valid range is [0, " +
                         std::to_string(static_cast<int>(s.effect_profiles.size()) - 1) + "]");
-            }
         }
     }
 

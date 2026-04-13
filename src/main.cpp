@@ -126,6 +126,18 @@ struct CLIHooks : TickHooks {
                         result.allowed ? "ACCEPTED" : "REJECTED");
     }
 
+    void on_effect_resolved(int tick, const EffectOutcome& outcome) override {
+        replay->log(replay_effect_resolved(tick, outcome));
+        if (!bench_mode) {
+            std::printf("tick %3d  EFFECT: actor=%u target=%u %s vitality %d->%d ammo %d->%d cd %d->%d\n",
+                        tick, outcome.request.actor, outcome.request.track_target,
+                        outcome.hit ? "HIT" : "MISS",
+                        outcome.vitality_before, outcome.vitality_after,
+                        outcome.actor_ammo_before, outcome.actor_ammo_after,
+                        outcome.actor_cooldown_before, outcome.actor_cooldown_after);
+        }
+    }
+
     void on_belief_invariant_check(const BeliefState& belief) override {
         check_belief_invariants(belief, "after belief decay");
     }

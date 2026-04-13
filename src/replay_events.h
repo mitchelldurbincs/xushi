@@ -159,6 +159,26 @@ inline JsonValue replay_action_resolved(int tick, const ActionResult& r) {
     });
 }
 
+inline JsonValue replay_effect_resolved(int tick, const EffectOutcome& o) {
+    return json_object({
+        {"type",                  json_string("effect_resolved")},
+        {"tick",                  json_number(tick)},
+        {"actor",                 json_number(o.request.actor)},
+        {"action",                json_string(action_type_str(o.request.type))},
+        {"track_target",          json_number(o.request.track_target)},
+        {"effect_profile_index",  json_number(o.request.effect_profile_index)},
+        {"realized",              json_bool(o.realized)},
+        {"hit",                   json_bool(o.hit)},
+        {"vitality_before",       json_number(o.vitality_before)},
+        {"vitality_after",        json_number(o.vitality_after)},
+        {"vitality_delta",        json_number(o.vitality_delta)},
+        {"actor_ammo_before",     json_number(o.actor_ammo_before)},
+        {"actor_ammo_after",      json_number(o.actor_ammo_after)},
+        {"actor_cooldown_before", json_number(o.actor_cooldown_before)},
+        {"actor_cooldown_after",  json_number(o.actor_cooldown_after)},
+    });
+}
+
 inline JsonValue replay_world_hash(int tick, uint64_t hash) {
     // Emit hash as hex string for readability
     char buf[17];

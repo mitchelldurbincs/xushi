@@ -20,12 +20,12 @@ struct ScenarioEntity {
     bool can_sense = false;      // runs sensing pass (observer)
     bool can_track = false;      // maintains BeliefState (receiver)
     bool is_observable = false;  // can be sensed by sensors
+    bool can_engage = false;     // can execute EngageTrack actions
 
     int class_id = 0;           // truth class for identity/classification
-
-    // Engage capability and runtime state defaults
-    bool can_engage = false;
-    int ammo_pool = 0;
+    int vitality = 100;         // current health/vitality points
+    int max_vitality = 100;
+    int ammo = 0;               // ammo remaining (runtime state)
     int cooldown_ticks_remaining = 0;
     std::vector<int> allowed_effect_profile_indices;
 
@@ -38,6 +38,29 @@ struct ScenarioEntity {
 };
 
 struct Scenario {
+    // Unified EffectProfile supporting both tactical gates and outcome resolution
+    struct EffectProfile {
+        // Identification
+        std::string name;
+
+        // Engagement gates (tactical)
+        float range = 0.0f;
+        bool requires_los = false;
+        float identity_threshold = 0.0f;
+        float corroboration_threshold = 0.0f;
+
+        // Outcome resolution (effect simulation)
+        float hit_probability = 1.0f;
+        int vitality_delta_min = 0;  // inclusive signed bounds (negative = damage)
+        int vitality_delta_max = 0;
+
+        // Resource costs
+        int cooldown_ticks = 0;
+        int ammo_cost = 0;
+
+        std::vector<std::string> roe_flags;  // optional
+    };
+
     uint64_t seed = 0;
     float dt = 1.0f;
     int ticks = 100;
@@ -45,17 +68,6 @@ struct Scenario {
 
     std::vector<Rect> obstacles;
     std::vector<ScenarioEntity> entities;
-
-    struct EffectProfile {
-        std::string name;
-        float range = 0.0f;
-        bool requires_los = false;
-        float identity_threshold = 0.0f;
-        float corroboration_threshold = 0.0f;
-        int cooldown_ticks = 0;
-        int ammo_cost = 0;
-        std::vector<std::string> roe_flags;  // optional
-    };
     std::vector<EffectProfile> effect_profiles;
 
     CommChannel channel = {3, 0.0f, 0.1f};
@@ -75,6 +87,7 @@ struct Scenario {
         std::map<EntityId, std::vector<Vec2>> patrol_routes;
     };
     PolicyConfig policy_config = {};
+    std::vector<EffectProfile> effect_profiles;
 };
 
 // Load a scenario from a JSON file. Throws std::runtime_error on failure.
