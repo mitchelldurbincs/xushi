@@ -19,15 +19,24 @@ Multi-agent tactical simulation engine — sensor detection, belief tracking, lo
 
 ## Quick Start
 
-**Requirements:** C++17 compiler (GCC, Clang, or Apple Clang), CMake 3.20+. No external dependencies for core.
+**Requirements:** C++17 compiler (GCC, Clang, Apple Clang, or MSVC), CMake 3.20+. No external dependencies for core.
 
+**Linux / macOS:**
 ```bash
-# Build
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
+```
 
+**Windows (Visual Studio 2022):**
+```bash
+cmake -B build -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Release -j %NUMBER_OF_PROCESSORS%
+```
+
+```bash
 # Run a scenario
-./build/xushi scenarios/default.json
+./build/xushi scenarios/default.json          # Linux/macOS
+build\Release\xushi.exe scenarios\default.json  # Windows
 
 # Benchmark mode (suppresses per-tick output)
 ./build/xushi --bench scenarios/default.json
@@ -231,8 +240,8 @@ viewer/
 
 Optional interactive replay visualizer. Requires [raylib](https://github.com/raysan5/raylib) 5.5.
 
+**Linux / macOS:**
 ```bash
-# Install raylib from source
 git clone --depth 1 --branch 5.5 https://github.com/raysan5/raylib.git /tmp/raylib
 cmake -B /tmp/raylib/build -S /tmp/raylib -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=OFF
 cmake --build /tmp/raylib/build -j$(nproc)
@@ -241,9 +250,20 @@ sudo cmake --install /tmp/raylib/build
 # Rebuild xushi (CMake auto-detects raylib)
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
-
-# View a replay
 ./build/xushi_viewer scenarios/default.replay
+```
+
+**Windows (Visual Studio 2022):**
+```bash
+git clone --depth 1 --branch 5.5 https://github.com/raysan5/raylib.git raylib-5.5
+cmake -B raylib-5.5/build -S raylib-5.5 -G "Visual Studio 17 2022" -A x64 -DBUILD_EXAMPLES=OFF
+cmake --build raylib-5.5/build --config Release
+cmake --install raylib-5.5/build --config Release --prefix raylib-5.5/install
+
+# Rebuild xushi with raylib prefix
+cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH=<path-to>/raylib-5.5/install
+cmake --build build --config Release
+build\Release\xushi_viewer.exe scenarios\default.replay
 ```
 
 ### Controls

@@ -46,15 +46,21 @@ if(RAYLIB_AVAILABLE)
     target_include_directories(xushi_viewer PRIVATE viewer)
     if(raylib_FOUND)
         target_link_libraries(xushi_viewer raylib)
+        if(WIN32)
+            target_link_libraries(xushi_viewer winmm gdi32 opengl32)
+        endif()
     else()
         target_include_directories(xushi_viewer PRIVATE ${RAYLIB_INCLUDE})
         target_link_libraries(xushi_viewer ${RAYLIB_LIB})
-        # macOS frameworks needed by raylib
+        # Platform libraries needed by raylib
         if(APPLE)
             target_link_libraries(xushi_viewer
                 "-framework IOKit"
                 "-framework Cocoa"
                 "-framework OpenGL")
+        elseif(WIN32)
+            target_link_libraries(xushi_viewer
+                winmm gdi32 opengl32)
         endif()
     endif()
     message(STATUS "raylib found — building xushi_viewer")
