@@ -65,6 +65,11 @@ struct ActionResult {
     ActionRequest request;
     bool allowed = false;
     uint32_t failure_mask = 0;  // GateFailureReason bits
+    // Stage-specific telemetry for EngageTrack replay/debugging.
+    uint32_t belief_failure_mask = 0;
+    uint32_t truth_failure_mask = 0;
+    bool rejected_by_belief_gate = false;
+    bool rejected_by_truth_adjudication = false;
     int tick = 0;
 };
 

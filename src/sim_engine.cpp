@@ -488,7 +488,7 @@ void SimEngine::adjudicate_actions(int tick, TickHooks& hooks) {
             if (belief_it != beliefs_.end())
                 target_track = belief_it->second.find_track(req.track_target);
 
-            // Basic engagement gates (runtime state checks)
+            // Basic runtime checks that do not require spatial adjudication.
             uint32_t failure = 0;
             if (!actor || !actor->can_engage)
                 failure |= static_cast<uint32_t>(GateFailureReason::NoCapability);
@@ -500,15 +500,17 @@ void SimEngine::adjudicate_actions(int tick, TickHooks& hooks) {
                 failure |= static_cast<uint32_t>(GateFailureReason::OutOfAmmo);
             if (!target_track)
                 failure |= static_cast<uint32_t>(GateFailureReason::TrackNotFound);
-            if (!target)
-                failure |= static_cast<uint32_t>(GateFailureReason::TrackNotFound);
 
-            // Tactical engagement gates (spatial/policy checks)
-            if (actor && target && target_track) {
+            // Two-stage gating model:
+            //  1) Decision gate uses actor-accessible belief data only.
+            //  2) Truth adjudication runs only if decision gate passed and checks realization truth.
+            uint32_t belief_failure = 0;
+            uint32_t truth_failure = 0;
+
+            if (actor && target_track) {
                 EngagementGateInputs gate_inputs;
                 gate_inputs.actor = actor;
                 gate_inputs.target_track = target_track;
-                gate_inputs.target_truth = target;
                 gate_inputs.effect_profile_index = req.effect_profile_index;
                 gate_inputs.effect_profile = profile;
                 gate_inputs.world.map = &map_;
@@ -517,11 +519,26 @@ void SimEngine::adjudicate_actions(int tick, TickHooks& hooks) {
                 gate_inputs.world.actor_id = req.actor;
                 gate_inputs.world.track_target_id = req.track_target;
 
-                const EngagementGateResult gate_result = compute_engagement_gates(gate_inputs);
-                failure |= gate_result.failure_mask;
+                const EngagementGateResult belief_gate = compute_engagement_gates(
+                    gate_inputs, EngagementGateStage::DecisionFromBelief);
+                belief_failure = belief_gate.failure_mask;
+                failure |= belief_failure;
+
+                if (belief_failure == 0) {
+                    gate_inputs.target_truth = target;
+                    const EngagementGateResult truth_gate = compute_engagement_gates(
+                        gate_inputs, EngagementGateStage::TruthAdjudication);
+                    truth_failure = truth_gate.failure_mask;
+                    failure |= truth_failure;
+                }
             }
 
             result.failure_mask = failure;
+            result.belief_failure_mask = belief_failure;
+            result.truth_failure_mask = truth_failure;
+            result.rejected_by_belief_gate = (belief_failure != 0);
+            result.rejected_by_truth_adjudication =
+                (belief_failure == 0 && truth_failure != 0);
             result.allowed = (failure == 0);
 
             // Effect resolution if allowed

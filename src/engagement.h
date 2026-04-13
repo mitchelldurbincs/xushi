@@ -24,11 +24,20 @@ struct EngagementGateInputs {
     EngagementWorldState world;
 };
 
+enum class EngagementGateStage {
+    // Stage 1 decision gate: only actor-accessible information (actor state + track estimate).
+    DecisionFromBelief,
+    // Stage 2 adjudication gate: truth-based checks used for realized effect resolution.
+    TruthAdjudication
+};
+
 struct EngagementGateDebug {
     std::optional<int> track_age_ticks;
     std::optional<float> track_uncertainty;
     std::optional<float> track_identity_confidence;
     std::optional<int> track_corroboration_count;
+    std::optional<float> actor_to_track_distance;
+    std::optional<bool> predicted_line_of_effect;
     std::optional<float> actor_to_truth_distance;
     std::optional<bool> has_line_of_effect;
 };
@@ -40,4 +49,5 @@ struct EngagementGateResult {
     bool allowed() const { return failure_mask == 0; }
 };
 
-EngagementGateResult compute_engagement_gates(const EngagementGateInputs& in);
+EngagementGateResult compute_engagement_gates(const EngagementGateInputs& in,
+                                              EngagementGateStage stage);
