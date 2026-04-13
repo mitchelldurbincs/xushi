@@ -1,0 +1,11 @@
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  readability-braces-around-statements
+
+# Only check project headers, not system/third-party
+HeaderFilterRegex: 'src/.*'
+
+# Start non-fatal — tighten to '*' once the codebase is clean
+WarningsAsErrors: ''
