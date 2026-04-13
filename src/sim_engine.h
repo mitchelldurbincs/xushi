@@ -12,8 +12,10 @@
 #include "map.h"
 #include "rng.h"
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "game_mode.h"
@@ -91,8 +93,19 @@ public:
     // Game mode result from the most recent tick (default: not finished)
     bool has_game_mode() const { return game_mode_ != nullptr; }
     const GameModeResult& game_mode_result() const { return last_game_mode_result_; }
+    ScenarioEntity* find_entity(EntityId id);
+    const ScenarioEntity* find_entity(EntityId id) const;
 
 private:
+    struct GridCoord {
+        int x = 0;
+        int y = 0;
+        bool operator==(const GridCoord& other) const { return x == other.x && y == other.y; }
+    };
+    struct GridCoordHash {
+        size_t operator()(const GridCoord& c) const;
+    };
+
     void tick_cooldowns();
     void tick_movement(int tick, TickHooks& hooks);
     void tick_sensing(int tick, TickHooks& hooks);
@@ -102,6 +115,10 @@ private:
     void tick_actions(int tick, TickHooks& hooks);
     void tick_periodic_snapshots(int tick, TickHooks& hooks);
     void move_toward_target(ScenarioEntity& entity, const Vec2& target) const;
+    void rebuild_entity_index();
+    void rebuild_spatial_bins(float cell_size);
+    void for_each_candidate_in_range(const Vec2& center, float range,
+                                     const std::function<void(size_t)>& fn) const;
 
     const Scenario* scn_ = nullptr;
     Map map_;
@@ -109,6 +126,8 @@ private:
     std::vector<ScenarioEntity*> sensors_;
     std::vector<ScenarioEntity*> trackers_;
     std::vector<ScenarioEntity*> observables_;
+    std::vector<ScenarioEntity*> trackers_no_team_;
+    std::unordered_map<int, std::vector<ScenarioEntity*>> trackers_by_team_;
     Rng rng_{0};
     CommSystem comms_;
     std::map<EntityId, BeliefState> beliefs_;
@@ -127,7 +146,9 @@ private:
     std::vector<ActionRequest> pending_actions_;
     std::vector<DesignationRecord> designations_;
     uint64_t next_designation_id_ = 1;
+    std::unordered_map<EntityId, size_t> entity_index_;
+    float spatial_cell_size_ = 1.0f;
+    std::unordered_map<GridCoord, std::vector<size_t>, GridCoordHash> spatial_bins_;
     void adjudicate_actions(int tick, TickHooks& hooks);
-    ScenarioEntity* find_entity(EntityId id);
     const Scenario::EffectProfile* find_effect_profile(uint32_t index) const;
 };
