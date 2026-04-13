@@ -39,6 +39,17 @@ struct ScenarioEntity {
 };
 
 struct Scenario {
+    struct EngagementRulesConfig {
+        Vec2 protected_zone_center = {0.0f, 0.0f};
+        float protected_zone_radius = 10.0f;
+        float friendly_risk_radius = 8.0f;
+        float default_effect_range = 80.0f;
+        float effect_range_step = 20.0f;
+        float max_track_uncertainty = 20.0f;
+        float min_identity_confidence = 0.5f;
+        int min_corroboration_count = 1;
+    };
+
     // Unified EffectProfile supporting both tactical gates and outcome resolution
     struct EffectProfile {
         // Identification
@@ -80,6 +91,7 @@ struct Scenario {
         float class_confusion_rate = 0.0f; // probability of misidentifying target class
     };
     PerceptionConfig perception = {};
+    EngagementRulesConfig engagement_rules = {};
 
     // Policy configuration (optional). Only "patrol" type supported.
     struct PolicyConfig {

@@ -511,6 +511,7 @@ void SimEngine::adjudicate_actions(int tick, TickHooks& hooks) {
                 gate_inputs.target_truth = target;
                 gate_inputs.effect_profile_index = req.effect_profile_index;
                 gate_inputs.effect_profile = profile;
+                gate_inputs.engagement_rules = scn_ ? &scn_->engagement_rules : nullptr;
                 gate_inputs.world.map = &map_;
                 gate_inputs.world.tick = tick;
                 gate_inputs.world.entities = &entities_;
