@@ -20,6 +20,7 @@ struct EngagementGateInputs {
     const Track* target_track = nullptr;
     const ScenarioEntity* target_truth = nullptr;
     uint32_t effect_profile_index = 0;
+    const Scenario::EffectProfile* effect_profile = nullptr;
     EngagementWorldState world;
 };
 

@@ -36,7 +36,8 @@ enum class GateFailureReason : uint32_t {
     FriendlyRisk      = 1u << 10,
     ActorDisabled     = 1u << 11,
     ROEBlocked        = 1u << 12,
-    TrackNotFound     = 1u << 13
+    TrackNotFound     = 1u << 13,
+    FriendlyTarget    = 1u << 14
 };
 
 inline uint32_t operator|(GateFailureReason a, GateFailureReason b) {

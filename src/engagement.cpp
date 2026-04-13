@@ -1,6 +1,7 @@
 #include "engagement.h"
 
 #include "constants.h"
+#include <algorithm>
 
 namespace {
 constexpr float kDefaultEffectRange = 80.0f;
@@ -20,16 +21,23 @@ float effect_profile_range(uint32_t effect_profile_index) {
 EngagementGateResult compute_engagement_gates(const EngagementGateInputs& in) {
     EngagementGateResult out;
 
-    // Placeholder gates - not modeled yet but preserved for compatibility
-    const bool actor_has_capability = false;
+    // Capability: actor must be able to engage and have the requested effect profile
+    const bool actor_has_capability = in.actor && in.actor->can_engage &&
+        std::find(in.actor->allowed_effect_profile_indices.begin(),
+                  in.actor->allowed_effect_profile_indices.end(),
+                  static_cast<int>(in.effect_profile_index))
+            != in.actor->allowed_effect_profile_indices.end();
     if (!actor_has_capability)
         out.failure_mask |= static_cast<uint32_t>(GateFailureReason::NoCapability);
 
-    const bool cooldown_available = true;
+    // Cooldown: actor must not be on cooldown
+    const bool cooldown_available = !in.actor || in.actor->cooldown_ticks_remaining == 0;
     if (!cooldown_available)
         out.failure_mask |= static_cast<uint32_t>(GateFailureReason::Cooldown);
 
-    const bool ammo_available = true;
+    // Ammo: actor must have enough ammo for the effect profile
+    const int ammo_needed = (in.effect_profile) ? in.effect_profile->ammo_cost : 1;
+    const bool ammo_available = !in.actor || in.actor->ammo >= ammo_needed;
     if (!ammo_available)
         out.failure_mask |= static_cast<uint32_t>(GateFailureReason::OutOfAmmo);
 
@@ -54,10 +62,17 @@ EngagementGateResult compute_engagement_gates(const EngagementGateInputs& in) {
     if (in.target_track->uncertainty > kMaxTrackUncertainty)
         out.failure_mask |= static_cast<uint32_t>(GateFailureReason::TrackTooUncertain);
 
-    if (in.target_track->identity_confidence < kMinIdentityConfidence)
+    // Identity threshold: use effect profile if available, otherwise fallback
+    const float identity_threshold = in.effect_profile
+        ? in.effect_profile->identity_threshold : kMinIdentityConfidence;
+    if (in.target_track->identity_confidence < identity_threshold)
         out.failure_mask |= static_cast<uint32_t>(GateFailureReason::IdentityTooWeak);
 
-    if (in.target_track->corroboration_count < kMinCorroborationCount)
+    // Corroboration threshold: use effect profile if available, otherwise fallback
+    const float corroboration_threshold = in.effect_profile
+        ? in.effect_profile->corroboration_threshold
+        : static_cast<float>(kMinCorroborationCount);
+    if (static_cast<float>(in.target_track->corroboration_count) < corroboration_threshold)
         out.failure_mask |= static_cast<uint32_t>(GateFailureReason::NeedsCorroboration);
 
     if (!in.target_truth) {
@@ -68,11 +83,15 @@ EngagementGateResult compute_engagement_gates(const EngagementGateInputs& in) {
     const float actor_to_target = (in.target_truth->position - in.actor->position).length();
     out.debug.actor_to_truth_distance = actor_to_target;
 
-    const float max_effect_range = effect_profile_range(in.effect_profile_index);
+    // Range: use effect profile if available, otherwise fallback formula
+    const float max_effect_range = in.effect_profile
+        ? in.effect_profile->range : effect_profile_range(in.effect_profile_index);
     if (actor_to_target > max_effect_range)
         out.failure_mask |= static_cast<uint32_t>(GateFailureReason::OutOfRange);
 
-    if (in.world.map) {
+    // Line of effect: use effect profile requires_los if available
+    const bool check_los = in.effect_profile ? in.effect_profile->requires_los : true;
+    if (check_los && in.world.map) {
         const bool has_loe = in.world.map->line_of_sight(in.actor->position, in.target_truth->position);
         out.debug.has_line_of_effect = has_loe;
         if (!has_loe)
@@ -84,10 +103,19 @@ EngagementGateResult compute_engagement_gates(const EngagementGateInputs& in) {
     if (protected_zone_distance <= kProtectedZoneRadius)
         out.failure_mask |= static_cast<uint32_t>(GateFailureReason::ProtectedZone);
 
-    // Friendly risk check
+    // Same-team engagement prevention (friendly fire)
+    if (in.actor->team >= 0 && in.target_truth->team >= 0 &&
+        in.actor->team == in.target_truth->team) {
+        out.failure_mask |= static_cast<uint32_t>(GateFailureReason::FriendlyTarget);
+    }
+
+    // Friendly risk: check if same-team entities are near the target
     if (in.world.entities) {
         for (const auto& entity : *in.world.entities) {
             if (entity.id == in.world.actor_id || entity.id == in.world.track_target_id)
+                continue;
+            // Only flag entities on the same team as the actor (or unaffiliated)
+            if (entity.team >= 0 && in.actor->team >= 0 && entity.team != in.actor->team)
                 continue;
             if ((entity.position - in.target_truth->position).length() <= kFriendlyRiskRadius) {
                 out.failure_mask |= static_cast<uint32_t>(GateFailureReason::FriendlyRisk);

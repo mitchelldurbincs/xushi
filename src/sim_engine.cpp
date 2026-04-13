@@ -175,6 +175,9 @@ void SimEngine::step(int tick, TickHooks& hooks) {
                 payload.observation = obs;
 
                 for (auto* tracker : trackers_) {
+                    // Team-filtered comms: don't share intel across teams
+                    if (sensor->team >= 0 && tracker->team >= 0 && sensor->team != tracker->team)
+                        continue;
                     float dist = (tracker->position - sensor->position).length();
                     int dt = comms_.send(sensor->id, tracker->id, payload, tick,
                                          dist, scn.channel, rng_);
@@ -222,6 +225,9 @@ void SimEngine::step(int tick, TickHooks& hooks) {
             payload.type = MessagePayload::OBSERVATION;
             payload.observation = phantom;
             for (auto* tracker : trackers_) {
+                // Team-filtered comms: don't share intel across teams
+                if (sensor->team >= 0 && tracker->team >= 0 && sensor->team != tracker->team)
+                    continue;
                 float dist = (tracker->position - sensor->position).length();
                 int dt = comms_.send(sensor->id, tracker->id, payload, tick,
                                      dist, scn.channel, rng_);
@@ -465,6 +471,7 @@ void SimEngine::adjudicate_actions(int tick, TickHooks& hooks) {
                 gate_inputs.target_track = target_track;
                 gate_inputs.target_truth = target;
                 gate_inputs.effect_profile_index = req.effect_profile_index;
+                gate_inputs.effect_profile = profile;
                 gate_inputs.world.map = &map_;
                 gate_inputs.world.tick = tick;
                 gate_inputs.world.entities = &entities_;
