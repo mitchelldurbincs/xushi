@@ -2,6 +2,7 @@
 #include "constants.h"
 #include "sensing.h"
 #include "invariants.h"
+#include "engagement.h"
 #include <algorithm>
 #include <cmath>
 
@@ -419,74 +420,40 @@ void SimEngine::adjudicate_actions(int tick, TickHooks& hooks) {
             break;
         }
         case ActionType::EngageTrack: {
-            uint32_t failure_mask = 0;
-            auto add_failure = [&](GateFailureReason reason) {
-                failure_mask |= static_cast<uint32_t>(reason);
-            };
-
-            const ScenarioEntity* actor = get_entity(req.actor);
-            const bool actor_has_capability = false; // Placeholder until explicit engage capability is modeled.
-            const bool actor_disabled = false; // Placeholder until explicit runtime disable state is modeled.
-            if (!actor_has_capability)
-                add_failure(GateFailureReason::NoCapability);
-            if (actor_disabled)
-                add_failure(GateFailureReason::ActorDisabled);
-
-            const Track* track = nullptr;
-            if (belief_it == beliefs_.end()) {
-                add_failure(GateFailureReason::TrackNotFound);
-            } else {
-                track = belief_it->second.find_track(req.track_target);
-                if (!track) {
-                    add_failure(GateFailureReason::TrackNotFound);
-                } else {
-                    if (track->status != TrackStatus::FRESH)
-                        add_failure(GateFailureReason::TrackTooStale);
-                    if (track->identity_confidence < kMinIdentityConfidenceForEngage)
-                        add_failure(GateFailureReason::IdentityTooWeak);
-                    if (track->corroboration_count < kMinCorroborationForEngage)
-                        add_failure(GateFailureReason::NeedsCorroboration);
-
-                    if (actor) {
-                        float range_to_track = (track->estimated_position - actor->position).length();
-                        float max_effect_range = effect_profile_range(req.effect_profile_index);
-                        if (range_to_track > max_effect_range)
-                            add_failure(GateFailureReason::OutOfRange);
-                        if (!map_.line_of_sight(actor->position, track->estimated_position))
-                            add_failure(GateFailureReason::NoLineOfEffect);
-                    }
-
-                    float protected_zone_distance =
-                        (track->estimated_position - kProtectedZoneCenter).length();
-                    if (protected_zone_distance <= kProtectedZoneRadius)
-                        add_failure(GateFailureReason::ProtectedZone);
-
-                    for (const auto& entity : entities_) {
-                        if (entity.id == req.actor || entity.id == req.track_target)
-                            continue;
-                        if ((entity.position - track->estimated_position).length() <= kFriendlyRiskRadius) {
-                            add_failure(GateFailureReason::FriendlyRisk);
-                            break;
-                        }
-                    }
-
-                    // Placeholder ROE gate; wire policy-based conditions here when available.
-                    const bool roe_allows = true;
-                    if (!roe_allows)
-                        add_failure(GateFailureReason::ROEBlocked);
+            const ScenarioEntity* actor_ent = nullptr;
+            for (const auto& e : entities_) {
+                if (e.id == req.actor) {
+                    actor_ent = &e;
+                    break;
                 }
             }
 
-            const bool cooldown_available = true; // Placeholder until per-actor cooldown state exists.
-            if (!cooldown_available)
-                add_failure(GateFailureReason::Cooldown);
+            const Track* target_track = nullptr;
+            if (belief_it != beliefs_.end())
+                target_track = belief_it->second.find_track(req.track_target);
 
-            const bool ammo_available = true; // Placeholder until per-actor ammo state exists.
-            if (!ammo_available)
-                add_failure(GateFailureReason::OutOfAmmo);
+            const ScenarioEntity* target_truth = nullptr;
+            for (const auto& e : entities_) {
+                if (e.id == req.track_target) {
+                    target_truth = &e;
+                    break;
+                }
+            }
 
-            result.failure_mask = failure_mask;
-            result.allowed = (failure_mask == 0);
+            EngagementGateInputs gate_inputs;
+            gate_inputs.actor = actor_ent;
+            gate_inputs.target_track = target_track;
+            gate_inputs.target_truth = target_truth;
+            gate_inputs.effect_profile_index = req.effect_profile_index;
+            gate_inputs.world.map = &map_;
+            gate_inputs.world.tick = tick;
+            gate_inputs.world.entities = &entities_;
+            gate_inputs.world.actor_id = req.actor;
+            gate_inputs.world.track_target_id = req.track_target;
+
+            const EngagementGateResult gate_result = compute_engagement_gates(gate_inputs);
+            result.allowed = gate_result.allowed();
+            result.failure_mask = gate_result.failure_mask;
             break;
         }
         case ActionType::RequestBDA: {

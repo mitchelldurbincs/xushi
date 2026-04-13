@@ -16,7 +16,8 @@ add_library(xushi_core STATIC
     src/path_resolve.cpp
     src/stats.cpp
     src/sim.cpp
-    src/sim_engine.cpp)
+    src/sim_engine.cpp
+    src/engagement.cpp)
 
 add_executable(xushi src/main.cpp)
 target_link_libraries(xushi xushi_core)
@@ -123,3 +124,7 @@ add_test(NAME policy COMMAND test_policy)
 add_executable(test_action tests/test_action.cpp)
 target_link_libraries(test_action xushi_core)
 add_test(NAME action COMMAND test_action)
+
+add_executable(test_engagement tests/test_engagement.cpp)
+target_link_libraries(test_engagement xushi_core)
+add_test(NAME engagement COMMAND test_engagement)
