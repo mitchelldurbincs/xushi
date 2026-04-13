@@ -93,6 +93,16 @@ public:
     const GameModeResult& game_mode_result() const { return last_game_mode_result_; }
 
 private:
+    void tick_cooldowns();
+    void tick_movement(int tick, TickHooks& hooks);
+    void tick_sensing(int tick, TickHooks& hooks);
+    void tick_communication(int tick, std::vector<Message>& delivered);
+    void tick_belief(int tick, TickHooks& hooks, const std::vector<Message>& delivered);
+    void tick_tasks(int tick, TickHooks& hooks);
+    void tick_actions(int tick, TickHooks& hooks);
+    void tick_periodic_snapshots(int tick, TickHooks& hooks);
+    void move_toward_target(ScenarioEntity& entity, const Vec2& target) const;
+
     const Scenario* scn_ = nullptr;
     Map map_;
     std::vector<ScenarioEntity> entities_;
