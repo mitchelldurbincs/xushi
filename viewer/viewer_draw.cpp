@@ -26,6 +26,29 @@ static bool try_get_xy_array(const JsonValue& obj, const std::string& key, float
     return true;
 }
 
+static bool try_get_entity_world_pos(const ViewerState& vs, EntityId id, int tick, float& x, float& y) {
+    // Return false only when the entity id is unknown to the scenario.
+    auto ent_it = vs.entities_by_id.find(id);
+    if (ent_it == vs.entities_by_id.end() || ent_it->second == nullptr) return false;
+
+    // Use replay entity position when tick/frame data is valid and available.
+    if (tick >= 0 && tick < static_cast<int>(vs.frames.size())) {
+        const auto& tick_positions = vs.frames[tick].entity_positions;
+        auto pos_it = tick_positions.find(id);
+        if (pos_it != tick_positions.end()) {
+            x = pos_it->second.x;
+            y = pos_it->second.y;
+            return true;
+        }
+    }
+
+    // Fall back to scenario initial position plus constant-velocity extrapolation.
+    const ScenarioEntity* ent = ent_it->second;
+    x = ent->position.x + ent->velocity.x * vs.scenario.dt * (tick + 1);
+    y = ent->position.y + ent->velocity.y * vs.scenario.dt * (tick + 1);
+    return true;
+}
+
 // --- Grid ---
 
 static void draw_grid(const ViewerState& vs) {
@@ -75,29 +98,13 @@ static void draw_obstacles(const ViewerState& vs) {
 
 static void draw_sensor_ranges(const ViewerState& vs) {
     int tick = vs.current_tick;
-    const std::map<EntityId, Vec2>* tick_positions = nullptr;
-    if (tick >= 0 && tick < static_cast<int>(vs.frames.size()))
-        tick_positions = &vs.frames[tick].entity_positions;
-
     float range = vs.scenario.max_sensor_range;
 
     for (const auto& ent : vs.scenario.entities) {
         if (!ent.can_sense) continue;
 
         float wx, wy;
-        if (tick_positions) {
-            auto it = tick_positions->find(ent.id);
-            if (it != tick_positions->end()) {
-                wx = it->second.x;
-                wy = it->second.y;
-            } else {
-                wx = ent.position.x + ent.velocity.x * vs.scenario.dt * (tick + 1);
-                wy = ent.position.y + ent.velocity.y * vs.scenario.dt * (tick + 1);
-            }
-        } else {
-            wx = ent.position.x + ent.velocity.x * vs.scenario.dt * (tick + 1);
-            wy = ent.position.y + ent.velocity.y * vs.scenario.dt * (tick + 1);
-        }
+        if (!try_get_entity_world_pos(vs, ent.id, tick, wx, wy)) continue;
 
         Vector2 pos = world_to_screen(wx, wy, vs);
         float screen_range = range * vs.zoom;
@@ -173,30 +180,11 @@ static void draw_waypoint_paths(const ViewerState& vs) {
 // --- Entities ---
 
 static void draw_entities(const ViewerState& vs) {
-    float dt = vs.scenario.dt;
     int tick = vs.current_tick;
-
-    // Get entity positions from replay if available for this tick
-    const std::map<EntityId, Vec2>* tick_positions = nullptr;
-    if (tick >= 0 && tick < static_cast<int>(vs.frames.size()))
-        tick_positions = &vs.frames[tick].entity_positions;
 
     for (const auto& ent : vs.scenario.entities) {
         float wx, wy;
-        // Use replay position if available, otherwise extrapolate from constant velocity
-        if (tick_positions) {
-            auto it = tick_positions->find(ent.id);
-            if (it != tick_positions->end()) {
-                wx = it->second.x;
-                wy = it->second.y;
-            } else {
-                wx = ent.position.x + ent.velocity.x * dt * (tick + 1);
-                wy = ent.position.y + ent.velocity.y * dt * (tick + 1);
-            }
-        } else {
-            wx = ent.position.x + ent.velocity.x * dt * (tick + 1);
-            wy = ent.position.y + ent.velocity.y * dt * (tick + 1);
-        }
+        if (!try_get_entity_world_pos(vs, ent.id, tick, wx, wy)) continue;
         Vector2 pos = world_to_screen(wx, wy, vs);
 
         float r = std::max(4.0f, 5.0f * vs.zoom / 3.0f);
@@ -243,7 +231,6 @@ static void draw_detections(const ViewerState& vs) {
 
     const auto& frame = vs.frames[vs.current_tick];
 
-    float dt = vs.scenario.dt;
     int tick = vs.current_tick;
 
     int missing_observer_count = 0;
@@ -257,21 +244,11 @@ static void draw_detections(const ViewerState& vs) {
         Vector2 observer_screen = {0, 0};
         if (det.has("observer")) {
             EntityId observer_id = static_cast<EntityId>(det["observer"].as_int());
-
-            // Use replay position if available, otherwise extrapolate
-            auto pos_it = frame.entity_positions.find(observer_id);
-            if (pos_it != frame.entity_positions.end()) {
-                observer_screen = world_to_screen(pos_it->second.x, pos_it->second.y, vs);
+            float wx = 0.0f;
+            float wy = 0.0f;
+            if (try_get_entity_world_pos(vs, observer_id, tick, wx, wy)) {
+                observer_screen = world_to_screen(wx, wy, vs);
                 draw_los = true;
-            } else {
-                auto it = vs.entities_by_id.find(observer_id);
-                if (it != vs.entities_by_id.end() && it->second != nullptr) {
-                    const ScenarioEntity* observer = it->second;
-                    float wx = observer->position.x + observer->velocity.x * dt * (tick + 1);
-                    float wy = observer->position.y + observer->velocity.y * dt * (tick + 1);
-                    observer_screen = world_to_screen(wx, wy, vs);
-                    draw_los = true;
-                }
             }
         }
 
