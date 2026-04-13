@@ -23,7 +23,17 @@ static void test_load_default() {
     CHECK(s.entities.size() == 3, "entity count");
     CHECK(s.entities[0].role_name == "drone", "first entity role_name");
     CHECK(s.entities[0].can_sense == true, "drone can_sense");
+    CHECK(s.entities[0].can_engage == true, "drone can_engage");
+    CHECK(s.entities[0].ammo_pool == 6, "drone ammo_pool");
+    CHECK(s.entities[0].allowed_effect_profile_indices.size() == 1,
+          "drone allowed profile count");
+    CHECK(s.entities[0].allowed_effect_profile_indices[0] == 0,
+          "drone allowed profile index");
     CHECK(s.entities[2].velocity.x == 1.0f, "target velocity");
+    CHECK(s.effect_profiles.size() == 1, "effect profile count");
+    CHECK(s.effect_profiles[0].name == "standard", "effect profile name");
+    CHECK(std::fabs(s.effect_profiles[0].range - 60.0f) < 0.01f,
+          "effect profile range");
     CHECK(s.channel.base_latency_ticks == 3, "channel base_latency");
     CHECK(std::fabs(s.channel.loss_probability - 0.1f) < 0.01f, "channel loss");
     CHECK(s.belief.fresh_ticks == 5, "belief fresh_ticks");
@@ -262,6 +272,37 @@ static void test_invalid_validations() {
     check_invalid_field("belief.confidence_decay_per_second", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": 10, \"uncertainty_growth\": 0.5, \"confidence_decay\": -0.05}", "belief.confidence_decay_per_second must be >= 0, got -0.05");
 }
 
+static void test_invalid_effect_profile_reference() {
+    const char* path = "tests/tmp_invalid_effect_profile_ref.json";
+    write_temp_scenario(path,
+        "{"
+        "\"seed\":1,"
+        "\"obstacles\":[],"
+        "\"effect_profiles\":["
+        "{\"name\":\"std\",\"range\":20,\"requires_los\":true,\"identity_threshold\":0.6,\"corroboration_threshold\":0.5,\"cooldown_ticks\":1,\"ammo_cost\":1}"
+        "],"
+        "\"entities\":["
+        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0],\"can_sense\":true,\"can_engage\":true,\"allowed_effect_profile_indices\":[9]},"
+        "{\"id\":1,\"type\":\"ground\",\"pos\":[1,0],\"vel\":[0,0],\"can_track\":true},"
+        "{\"id\":2,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0],\"is_observable\":true}"
+        "]"
+        "}");
+
+    bool caught = false;
+    std::string message;
+    try {
+        load_scenario(path);
+    } catch (const std::runtime_error& e) {
+        caught = true;
+        message = e.what();
+    }
+    CHECK(caught, "invalid effect profile reference rejected");
+    CHECK(message.find(path) != std::string::npos, "invalid profile ref includes path");
+    CHECK(message.find("allowed_effect_profile_indices[0]") != std::string::npos,
+          "invalid profile ref includes offending field");
+    std::remove(path);
+}
+
 int main() {
     std::printf("Running scenario tests...\n");
     test_load_default();
@@ -275,5 +316,6 @@ int main() {
     test_duplicate_entity_ids_rejected();
     test_belief_rate_units_per_second_keys();
     test_invalid_validations();
+    test_invalid_effect_profile_reference();
     TEST_REPORT();
 }

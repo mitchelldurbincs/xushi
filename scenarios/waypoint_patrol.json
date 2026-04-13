@@ -5,11 +5,78 @@
   "max_sensor_range": 80.0,
   "obstacles": [],
   "entities": [
-    {"id": 0, "type": "drone",  "pos": [50, 50], "vel": [0, 0], "can_sense": true},
-    {"id": 1, "type": "ground", "pos": [50, 50], "vel": [0, 0], "can_track": true},
-    {"id": 2, "type": "target", "pos": [20, 20], "vel": [0, 0], "is_observable": true,
-     "waypoints": [[40, 20], [40, 40], [20, 40], [20, 20]],
-     "speed": 2.0,
-     "waypoint_mode": "loop"}
+    {
+      "id": 0,
+      "type": "drone",
+      "pos": [
+        50,
+        50
+      ],
+      "vel": [
+        0,
+        0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 1,
+      "type": "ground",
+      "pos": [
+        50,
+        50
+      ],
+      "vel": [
+        0,
+        0
+      ],
+      "can_track": true
+    },
+    {
+      "id": 2,
+      "type": "target",
+      "pos": [
+        20,
+        20
+      ],
+      "vel": [
+        0,
+        0
+      ],
+      "is_observable": true,
+      "waypoints": [
+        [
+          40,
+          20
+        ],
+        [
+          40,
+          40
+        ],
+        [
+          20,
+          40
+        ],
+        [
+          20,
+          20
+        ]
+      ],
+      "speed": 2.0,
+      "waypoint_mode": "loop"
+    }
+  ],
+  "effect_profiles": [
+    {
+      "name": "standard",
+      "range": 60.0,
+      "requires_los": true,
+      "identity_threshold": 0.6,
+      "corroboration_threshold": 0.5,
+      "cooldown_ticks": 2,
+      "ammo_cost": 1,
+      "roe_flags": [
+        "pid_required"
+      ]
+    }
   ]
 }

@@ -5,16 +5,114 @@
   "max_sensor_range": 100.0,
   "obstacles": [],
   "entities": [
-    {"id": 0, "type": "drone_a", "pos": [10, 10], "vel": [0, 0], "can_sense": true, "speed": 5.0},
-    {"id": 1, "type": "drone_b", "pos": [90, 90], "vel": [0, 0], "can_sense": true, "speed": 5.0},
-    {"id": 2, "type": "hq",      "pos": [50, 50], "vel": [0, 0], "can_track": true},
-    {"id": 3, "type": "target",  "pos": [30, 70], "vel": [0.5, -0.3], "is_observable": true}
+    {
+      "id": 0,
+      "type": "drone_a",
+      "pos": [
+        10,
+        10
+      ],
+      "vel": [
+        0,
+        0
+      ],
+      "can_sense": true,
+      "speed": 5.0
+    },
+    {
+      "id": 1,
+      "type": "drone_b",
+      "pos": [
+        90,
+        90
+      ],
+      "vel": [
+        0,
+        0
+      ],
+      "can_sense": true,
+      "speed": 5.0
+    },
+    {
+      "id": 2,
+      "type": "hq",
+      "pos": [
+        50,
+        50
+      ],
+      "vel": [
+        0,
+        0
+      ],
+      "can_track": true
+    },
+    {
+      "id": 3,
+      "type": "target",
+      "pos": [
+        30,
+        70
+      ],
+      "vel": [
+        0.5,
+        -0.3
+      ],
+      "is_observable": true
+    }
   ],
   "policy": {
     "type": "patrol",
     "routes": {
-      "0": [[10, 10], [90, 10], [90, 50], [10, 50]],
-      "1": [[90, 90], [10, 90], [10, 50], [90, 50]]
+      "0": [
+        [
+          10,
+          10
+        ],
+        [
+          90,
+          10
+        ],
+        [
+          90,
+          50
+        ],
+        [
+          10,
+          50
+        ]
+      ],
+      "1": [
+        [
+          90,
+          90
+        ],
+        [
+          10,
+          90
+        ],
+        [
+          10,
+          50
+        ],
+        [
+          90,
+          50
+        ]
+      ]
     }
-  }
+  },
+  "effect_profiles": [
+    {
+      "name": "standard",
+      "range": 60.0,
+      "requires_los": true,
+      "identity_threshold": 0.6,
+      "corroboration_threshold": 0.5,
+      "cooldown_ticks": 2,
+      "ammo_cost": 1,
+      "roe_flags": [
+        "pid_required"
+      ]
+    }
+  ]
 }
