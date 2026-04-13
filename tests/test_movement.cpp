@@ -1,13 +1,13 @@
-#include "test_helpers.h"
-#include "../src/movement.h"
-#include "../src/rng.h"
-#include <cmath>
-
 // GCC 13 emits a false-positive -Wnonnull on std::vector<Vec2> copy/assign
 // with optimizations enabled (known compiler bug). Suppress it here.
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic ignored "-Wnonnull"
 #endif
+
+#include "test_helpers.h"
+#include "../src/movement.h"
+#include "../src/rng.h"
+#include <cmath>
 
 static Rng test_rng(12345);
 
