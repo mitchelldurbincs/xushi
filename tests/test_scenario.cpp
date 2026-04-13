@@ -270,6 +270,7 @@ static void test_invalid_validations() {
     check_invalid_field("belief.stale_ticks", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": -1, \"uncertainty_growth\": 0.5, \"confidence_decay\": 0.05}", "belief.stale_ticks must be >= 0, got -1");
     check_invalid_field("belief.uncertainty_growth_per_second", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": 10, \"uncertainty_growth\": -0.1, \"confidence_decay\": 0.05}", "belief.uncertainty_growth_per_second must be >= 0, got -0.1");
     check_invalid_field("belief.confidence_decay_per_second", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": 10, \"uncertainty_growth\": 0.5, \"confidence_decay\": -0.05}", "belief.confidence_decay_per_second must be >= 0, got -0.05");
+    check_invalid_field("belief.negative_evidence_factor", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": 10, \"uncertainty_growth\": 0.5, \"confidence_decay\": 0.05, \"negative_evidence_factor\": 1.2}", "belief.negative_evidence_factor must be in [0, 1], got 1.2");
 }
 
 static void test_invalid_effect_profile_reference() {
@@ -303,6 +304,40 @@ static void test_invalid_effect_profile_reference() {
     std::remove(path);
 }
 
+static void test_invalid_effect_profile_hit_probability() {
+    const char* path = "tests/tmp_invalid_hit_probability.json";
+    write_temp_scenario(path,
+        "{"
+        "\"seed\":1,"
+        "\"obstacles\":[],"
+        "\"effect_profiles\":["
+        "{\"name\":\"std\",\"range\":20,\"hit_probability\":1.25}"
+        "],"
+        "\"entities\":["
+        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0],\"can_sense\":true},"
+        "{\"id\":1,\"type\":\"ground\",\"pos\":[1,0],\"vel\":[0,0],\"can_track\":true},"
+        "{\"id\":2,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0],\"is_observable\":true}"
+        "]"
+        "}");
+
+    bool caught = false;
+    std::string message;
+    try {
+        load_scenario(path);
+    } catch (const std::runtime_error& e) {
+        caught = true;
+        message = e.what();
+    }
+
+    CHECK(caught, "invalid effect profile hit_probability rejected");
+    CHECK(message.find(path) != std::string::npos, "invalid hit_probability includes path");
+    CHECK(message.find("effect_profiles[0].hit_probability") != std::string::npos,
+          "invalid hit_probability includes field");
+    CHECK(message.find("must be in [0, 1], got 1.25") != std::string::npos,
+          "invalid hit_probability includes range");
+    std::remove(path);
+}
+
 int main() {
     std::printf("Running scenario tests...\n");
     test_load_default();
@@ -317,5 +352,6 @@ int main() {
     test_belief_rate_units_per_second_keys();
     test_invalid_validations();
     test_invalid_effect_profile_reference();
+    test_invalid_effect_profile_hit_probability();
     TEST_REPORT();
 }
