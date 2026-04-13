@@ -1,6 +1,7 @@
 #include "sim_engine.h"
 #include "sim.h"
 #include "patrol_policy.h"
+#include "game_mode.h"
 #include "replay.h"
 #include "replay_events.h"
 #include "invariants.h"
@@ -159,6 +160,17 @@ struct CLIHooks : TickHooks {
         }
     }
 
+    void on_game_mode_end(int tick, const GameModeResult& result) override {
+        if (!bench_mode) {
+            if (result.winning_team >= 0)
+                std::printf("tick %3d  GAME OVER: team %d wins (%s)\n",
+                            tick, result.winning_team, result.reason.c_str());
+            else
+                std::printf("tick %3d  GAME OVER: draw (%s)\n",
+                            tick, result.reason.c_str());
+        }
+    }
+
     void on_world_hash(int tick, uint64_t hash) override {
         replay->log(replay_world_hash(tick, hash));
     }
@@ -213,8 +225,17 @@ int main(int argc, char* argv[]) {
         policy = std::move(pp);
     }
 
+    // Construct game mode from scenario config (nullptr if none configured)
+    std::unique_ptr<GameMode> game_mode;
+    try {
+        game_mode = create_game_mode(scn);
+    } catch (const std::runtime_error& e) {
+        std::fprintf(stderr, "error: %s\n", e.what());
+        return 1;
+    }
+
     SimEngine engine;
-    engine.init(scn, policy.get());
+    engine.init(scn, policy.get(), game_mode.get());
 
     ReplayWriter replay(replay_path);
     replay.log(replay_header(scn, path));
@@ -266,6 +287,10 @@ int main(int argc, char* argv[]) {
         engine.step(tick, hooks);
         double tick_us = elapsed_us(t0);
         (void)tick_us;
+
+        // Check for game mode early termination
+        if (engine.has_game_mode() && engine.game_mode_result().finished)
+            break;
 
         if (!bench_mode) {
             for (const auto& e : engine.get_entities()) {

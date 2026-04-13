@@ -24,7 +24,7 @@ static void test_load_default() {
     CHECK(s.entities[0].role_name == "drone", "first entity role_name");
     CHECK(s.entities[0].can_sense == true, "drone can_sense");
     CHECK(s.entities[0].can_engage == true, "drone can_engage");
-    CHECK(s.entities[0].ammo_pool == 6, "drone ammo_pool");
+    CHECK(s.entities[0].ammo == 6, "drone ammo");
     CHECK(s.entities[0].allowed_effect_profile_indices.size() == 1,
           "drone allowed profile count");
     CHECK(s.entities[0].allowed_effect_profile_indices[0] == 0,

@@ -22,6 +22,7 @@ struct ScenarioEntity {
     bool is_observable = false;  // can be sensed by sensors
     bool can_engage = false;     // can execute EngageTrack actions
 
+    int team = -1;              // team/faction id (-1 = unaffiliated)
     int class_id = 0;           // truth class for identity/classification
     int vitality = 100;         // current health/vitality points
     int max_vitality = 100;
@@ -87,7 +88,13 @@ struct Scenario {
         std::map<EntityId, std::vector<Vec2>> patrol_routes;
     };
     PolicyConfig policy_config = {};
-    std::vector<EffectProfile> effect_profiles;
+
+    // Game mode configuration (optional). Empty type = no game mode.
+    struct GameModeConfig {
+        std::string type;  // "asset_protection", etc.
+        std::vector<int> asset_entity_ids;  // for asset_protection mode
+    };
+    GameModeConfig game_mode_config = {};
 };
 
 // Load a scenario from a JSON file. Throws std::runtime_error on failure.

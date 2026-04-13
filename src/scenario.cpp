@@ -125,6 +125,7 @@ Scenario load_scenario(const std::string& path) {
         if (ent.has("is_observable")) e.is_observable = ent["is_observable"].as_bool();
         if (ent.has("can_engage"))    e.can_engage    = ent["can_engage"].as_bool();
 
+        if (ent.has("team"))           e.team = ent["team"].as_int();
         if (ent.has("class_id"))      e.class_id = ent["class_id"].as_int();
 
         // Vitality/health
@@ -312,6 +313,17 @@ Scenario load_scenario(const std::string& path) {
                     "references effect_profiles[" + std::to_string(idx) +
                         "] but valid range is [0, " +
                         std::to_string(static_cast<int>(s.effect_profiles.size()) - 1) + "]");
+            }
+        }
+    }
+
+    // Game mode config (optional)
+    if (root.has("game_mode")) {
+        const auto& gm = root["game_mode"];
+        s.game_mode_config.type = gm["type"].as_string();
+        if (gm.has("assets")) {
+            for (const auto& a : gm["assets"].as_array())
+                s.game_mode_config.asset_entity_ids.push_back(a.as_int());
         }
     }
 

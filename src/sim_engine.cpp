@@ -38,7 +38,7 @@ uint64_t SimEngine::compute_world_hash() const {
     return h;
 }
 
-void SimEngine::init(const Scenario& scn, Policy* policy) {
+void SimEngine::init(const Scenario& scn, Policy* policy, GameMode* game_mode) {
     scn_ = &scn;
     map_.obstacles = scn.obstacles;
     entities_ = scn.entities;
@@ -67,10 +67,19 @@ void SimEngine::init(const Scenario& scn, Policy* policy) {
     pending_actions_.clear();
     designations_.clear();
     next_designation_id_ = 1;
+
+    game_mode_ = game_mode;
+    last_game_mode_result_ = GameModeResult{};
+    if (game_mode_)
+        game_mode_->init(scn, entities_);
 }
 
 void SimEngine::step(int tick, TickHooks& hooks) {
     const Scenario& scn = *scn_;
+
+    // Game mode: tick start
+    if (game_mode_)
+        game_mode_->on_tick_start(tick, entities_);
 
     // Cooldowns tick down once per simulation step.
     for (auto& e : entities_) {
@@ -353,6 +362,13 @@ void SimEngine::step(int tick, TickHooks& hooks) {
         hooks.on_world_hash(tick, hash);
         hooks.on_stats_snapshot(tick, stats_);
     }
+
+    // ── Game mode: tick end ──
+    if (game_mode_) {
+        last_game_mode_result_ = game_mode_->on_tick_end(tick, entities_);
+        if (last_game_mode_result_.finished)
+            hooks.on_game_mode_end(tick, last_game_mode_result_);
+    }
 }
 
 void SimEngine::submit_action(const ActionRequest& req) {
@@ -493,6 +509,11 @@ void SimEngine::adjudicate_actions(int tick, TickHooks& hooks) {
                 outcome.vitality_delta = outcome.vitality_after - outcome.vitality_before;
                 outcome.actor_ammo_after = actor->ammo;
                 outcome.actor_cooldown_after = actor->cooldown_ticks_remaining;
+
+                if (game_mode_ && outcome.vitality_delta != 0)
+                    game_mode_->on_entity_damaged(tick, req.track_target,
+                                                  outcome.vitality_before,
+                                                  outcome.vitality_after);
 
                 hooks.on_effect_resolved(tick, outcome);
             }
