@@ -21,11 +21,11 @@ struct GameMode {
     virtual void init(const Scenario& scn, const std::vector<ScenarioEntity>& entities) = 0;
 
     // Called at the start of each tick, before any simulation phases.
-    virtual void on_tick_start(int tick, const std::vector<ScenarioEntity>& entities) {}
+    virtual void on_tick_start(int /*tick*/, const std::vector<ScenarioEntity>& /*entities*/) {}
 
     // Called when an entity's vitality changes from effect resolution.
-    virtual void on_entity_damaged(int tick, EntityId target,
-                                   int vitality_before, int vitality_after) {}
+    virtual void on_entity_damaged(int /*tick*/, EntityId /*target*/,
+                                   int /*vitality_before*/, int /*vitality_after*/) {}
 
     // Called after all tick phases complete.
     // Return result with finished=true to end the simulation early.
