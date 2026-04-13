@@ -7,6 +7,7 @@ ReplayWriter::ReplayWriter(const std::string& path)
 }
 
 void ReplayWriter::log(const JsonValue& event) {
+    (void)kReplayFormatVersion; // replay header carries explicit format for viewer compatibility.
     file << json_serialize(event) << '\n';
 }
 

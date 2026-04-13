@@ -8,6 +8,7 @@
 #include "scenario.h"
 #include "stats.h"
 #include "task.h"
+#include "replay.h"
 #include <cstdint>
 
 // Event factory helpers. Each returns a JsonValue ready to log.
@@ -21,6 +22,7 @@ inline JsonValue replay_header(const Scenario& scn, const std::string& scenario_
         {"seed",     json_number(static_cast<double>(scn.seed))},
         {"dt",       json_number(scn.dt)},
         {"ticks",    json_number(scn.ticks)},
+        {"format",   json_number(kReplayFormatVersion)},
     });
 }
 
@@ -76,9 +78,11 @@ inline JsonValue replay_track_update(int tick, EntityId owner, const Track& trk)
                                 json_number(trk.estimated_position.y)})},
         {"conf",   json_number(trk.confidence)},
         {"unc",    json_number(trk.uncertainty)},
+        {"last_update_tick", json_number(trk.last_update_tick)},
         {"class_id",   json_number(trk.class_id)},
         {"id_conf",    json_number(trk.identity_confidence)},
         {"corr_count", json_number(trk.corroboration_count)},
+        {"source_mask", json_number(static_cast<double>(trk.source_mask))},
     });
 }
 

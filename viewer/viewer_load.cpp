@@ -136,6 +136,7 @@ void viewer_load(ViewerState& vs, const std::string& replay_path) {
     vs.scenario_path = resolve_scenario_path_from_replay(replay_path, header_scenario_path);
     int header_ticks = get_required_int(hdr, "ticks", header_context);
     double header_dt = get_required_number(hdr, "dt", header_context);
+    int header_format = hdr.int_or("format", 1);
     vs.scenario = load_scenario(vs.scenario_path);
     vs.total_ticks = header_ticks > 0 ? header_ticks : vs.scenario.ticks;
     vs.entities_by_id.clear();
@@ -153,6 +154,9 @@ void viewer_load(ViewerState& vs, const std::string& replay_path) {
     if (std::fabs(vs.scenario.dt - static_cast<float>(header_dt)) > 1e-6f) {
         parse_warnings.push_back("event[0]: header dt (" + std::to_string(header_dt) +
                                  ") differs from scenario dt (" + std::to_string(vs.scenario.dt) + ")");
+    }
+    if (header_format < 2) {
+        parse_warnings.push_back("event[0]: replay format < 2, COP metadata may be incomplete");
     }
 
     // Index events by tick
@@ -179,6 +183,8 @@ void viewer_load(ViewerState& vs, const std::string& replay_path) {
                 get_required_number(ev, "unc", context);
                 get_required_number(ev, "conf", context);
                 get_required_string(ev, "status", context);
+                if (header_format >= 2)
+                    get_required_int(ev, "last_update_tick", context);
                 vs.frames[tick].track_updates.push_back(ev);
             } else if (type == "track_expired") {
                 vs.frames[tick].track_expired.push_back(ev);

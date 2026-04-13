@@ -300,10 +300,13 @@ static void draw_tracks(const ViewerState& vs) {
         if (!trk.has("status") || trk["status"].type != JsonValue::STRING) continue;
         float unc = static_cast<float>(trk["unc"].as_number());
         float conf = static_cast<float>(trk["conf"].as_number());
+        int last_update_tick = trk.int_or("last_update_tick", vs.current_tick);
         std::string status = trk["status"].as_string();
 
         Vector2 pos = world_to_screen(px, py, vs);
-        float screen_unc = unc * vs.zoom;
+        float screen_unc = std::max(1.0f, unc * vs.zoom);
+        float ellipse_rx = screen_unc;
+        float ellipse_ry = screen_unc * 0.65f;
 
         unsigned char alpha = static_cast<unsigned char>(conf * 200 + 30);
 
@@ -316,12 +319,19 @@ static void draw_tracks(const ViewerState& vs) {
             outline = {200, 120, 50, alpha};
         }
 
-        DrawCircleV(pos, screen_unc, fill);
-        DrawCircleLinesV(pos, screen_unc, outline);
+        DrawEllipse(static_cast<int>(pos.x), static_cast<int>(pos.y), ellipse_rx, ellipse_ry, fill);
+        DrawEllipseLines(static_cast<int>(pos.x), static_cast<int>(pos.y), ellipse_rx, ellipse_ry, outline);
 
         // Cross at center
         DrawLineEx({pos.x - 4, pos.y}, {pos.x + 4, pos.y}, 1.0f, outline);
         DrawLineEx({pos.x, pos.y - 4}, {pos.x, pos.y + 4}, 1.0f, outline);
+
+        int age_ticks = std::max(0, vs.current_tick - last_update_tick);
+        const char* age_text = TextFormat("age:%dt", age_ticks);
+        DrawText(age_text,
+                 static_cast<int>(pos.x + ellipse_rx + 4.0f),
+                 static_cast<int>(pos.y - ellipse_ry - 10.0f),
+                 8, {230, 210, 170, 220});
     }
 }
 
@@ -497,7 +507,7 @@ static void draw_ui(const ViewerState& vs) {
     // Legend (top right)
     int lx = static_cast<int>(sw - 190);
     int ly = 10;
-    DrawRectangle(lx - 5, ly - 5, 190, 138, {25, 25, 30, 200});
+    DrawRectangle(lx - 5, ly - 5, 190, 154, {25, 25, 30, 200});
     DrawCircle(lx + 6, ly + 8, 5, {50, 130, 240, 255});
     DrawText("Drone", lx + 16, ly + 2, 12, {180, 180, 190, 200});
     DrawRectangle(lx + 1, ly + 21, 10, 10, {50, 180, 100, 255});
@@ -530,9 +540,11 @@ static void draw_ui(const ViewerState& vs) {
     DrawText(vs.show_designations ? "Designation [D]" : "Designation [D] OFF",
              lx + 16, ly + 108, 12,
              vs.show_designations ? Color{180, 180, 190, 200} : Color{100, 100, 110, 150});
+    DrawText(vs.render_mode == ViewerState::RenderMode::GroundTruth ? "Mode [C]: Ground Truth" : "Mode [C]: COP",
+             lx + 16, ly + 122, 12, {180, 180, 190, 210});
 
     // Controls hint
-    DrawText("SPACE: play/pause  ARROWS: step  +/-: speed  SCROLL: zoom  RIGHT-DRAG: pan  R: ranges  W: waypoints  D: desig",
+    DrawText("SPACE: play/pause  ARROWS: step  +/-: speed  SCROLL: zoom  RIGHT-DRAG: pan  R: ranges  W: waypoints  D: desig  C: mode",
              10, 10, 10, {120, 120, 130, 160});
 }
 
@@ -542,15 +554,22 @@ void viewer_draw(const ViewerState& vs) {
     ClearBackground({20, 20, 25, 255});
     draw_grid(vs);
     draw_obstacles(vs);
-    if (vs.show_sensor_ranges)
-        draw_sensor_ranges(vs);
-    if (vs.show_waypoint_paths)
-        draw_waypoint_paths(vs);
-    draw_detections(vs);
-    draw_tracks(vs);
-    if (vs.show_designations)
-        draw_designations(vs);
-    draw_entities(vs);
+    if (vs.render_mode == ViewerState::RenderMode::GroundTruth) {
+        if (vs.show_sensor_ranges)
+            draw_sensor_ranges(vs);
+        if (vs.show_waypoint_paths)
+            draw_waypoint_paths(vs);
+        draw_detections(vs);
+        draw_tracks(vs);
+        if (vs.show_designations)
+            draw_designations(vs);
+        draw_entities(vs);
+    } else {
+        // COP mode: render only belief products (tracks + optional designation overlays).
+        draw_tracks(vs);
+        if (vs.show_designations)
+            draw_designations(vs);
+    }
     draw_messages(vs);
     draw_ui(vs);
 }

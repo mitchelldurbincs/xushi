@@ -5,6 +5,8 @@
 #include <vector>
 #include <fstream>
 
+constexpr int kReplayFormatVersion = 2;
+
 // Type-agnostic replay writer. Writes NDJSON (one JSON object per line).
 struct ReplayWriter {
     std::ofstream file;
