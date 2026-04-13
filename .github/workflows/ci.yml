@@ -1,0 +1,189 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Core: build on two platforms, both configs, Clang + GCC on Linux ──
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, compiler: gcc,        cc: gcc,   cxx: g++     }
+          - { os: ubuntu-latest, compiler: clang,      cc: clang, cxx: clang++ }
+          - { os: macos-latest,  compiler: appleclang, cc: clang, cxx: clang++ }
+    runs-on: ${{ matrix.os }}
+    name: build (${{ matrix.os }} / ${{ matrix.compiler }})
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build & test (Debug)
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          cmake -B build-debug \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS="-Wall -Wextra -Werror"
+          cmake --build build-debug -j "$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)"
+          ctest --test-dir build-debug --output-on-failure
+
+      - name: Build & test (Release)
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          cmake -B build-release \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS="-Wall -Wextra -Werror"
+          cmake --build build-release -j "$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)"
+          ctest --test-dir build-release --output-on-failure
+
+  # ── Byte-for-byte replay diffing (stricter than hash-based tests) ─────
+  determinism-replay-diff:
+    runs-on: ubuntu-latest
+    name: determinism (replay diff)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build (Release)
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j "$(nproc)"
+
+      - name: Replay diff
+        run: |
+          scenarios=(
+            default
+            benchmark_dense
+            noisy_perception
+            multi_agent
+          )
+          status=0
+          for name in "${scenarios[@]}"; do
+            echo "--- $name ---"
+            ./build/xushi --bench "scenarios/${name}.json"
+            mv "scenarios/${name}.replay" "run1_${name}.replay"
+            ./build/xushi --bench "scenarios/${name}.json"
+            if cmp -s "run1_${name}.replay" "scenarios/${name}.replay"; then
+              echo "  OK: replays match byte-for-byte"
+            else
+              echo "  FAIL: replays differ"
+              diff "run1_${name}.replay" "scenarios/${name}.replay" | head -40
+              status=1
+            fi
+          done
+          exit $status
+
+  # ── Static analysis ───────────────────────────────────────────────────
+  lint:
+    runs-on: ubuntu-latest
+    name: lint
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy cppcheck
+
+      - name: Generate compile_commands.json
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: clang-tidy
+        run: |
+          clang-tidy -p build src/*.cpp
+
+      - name: cppcheck
+        run: |
+          cppcheck \
+            --enable=warning,performance,portability \
+            --error-exitcode=1 \
+            --suppress=missingIncludeSystem \
+            --std=c++17 \
+            src/ tests/
+
+  # ── Validate every scenario JSON parses cleanly ───────────────────────
+  scenario-validation:
+    runs-on: ubuntu-latest
+    name: scenarios
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate JSON syntax
+        run: |
+          status=0
+          for f in scenarios/*.json; do
+            if python3 -c "import json, sys; json.load(open(sys.argv[1]))" "$f" 2>&1; then
+              echo "  OK: $f"
+            else
+              echo "  FAIL: $f"
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: Validate scenario loading
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j "$(nproc)"
+          status=0
+          for f in scenarios/*.json; do
+            echo -n "Loading $f ... "
+            if timeout 30 ./build/xushi --bench "$f" > /dev/null 2>&1; then
+              echo "OK"
+            else
+              echo "FAIL"
+              status=1
+            fi
+          done
+          exit $status
+
+  # ── Build viewer to catch API drift between core and viewer ───────────
+  viewer-build:
+    runs-on: ubuntu-latest
+    name: viewer
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install raylib build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev libx11-dev libxrandr-dev libxi-dev \
+            libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
+            libxinerama-dev libwayland-dev libxkbcommon-dev
+
+      - name: Build raylib from source
+        run: |
+          git clone --depth 1 --branch 5.5 https://github.com/raysan5/raylib.git /tmp/raylib
+          cmake -B /tmp/raylib/build -S /tmp/raylib \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_EXAMPLES=OFF
+          cmake --build /tmp/raylib/build -j "$(nproc)"
+          sudo cmake --install /tmp/raylib/build
+
+      - name: Build xushi (with viewer)
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS="-Wall -Wextra -Werror"
+          cmake --build build -j "$(nproc)"
+
+      - name: Verify viewer binary exists
+        run: test -f build/xushi_viewer && echo "xushi_viewer built successfully"
