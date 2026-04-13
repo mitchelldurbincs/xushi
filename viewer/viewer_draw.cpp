@@ -26,6 +26,12 @@ static bool try_get_xy_array(const JsonValue& obj, const std::string& key, float
     return true;
 }
 
+static const TickFrame* current_frame_or_null(const ViewerState& vs) {
+    if (vs.current_tick < 0 || vs.current_tick >= static_cast<int>(vs.frames.size()))
+        return nullptr;
+    return &vs.frames[vs.current_tick];
+}
+
 // --- Grid ---
 
 static void draw_grid(const ViewerState& vs) {
@@ -238,17 +244,16 @@ static void draw_entities(const ViewerState& vs) {
 // --- Detections ---
 
 static void draw_detections(const ViewerState& vs) {
-    if (vs.current_tick < 0 || vs.current_tick >= static_cast<int>(vs.frames.size()))
+    const TickFrame* frame = current_frame_or_null(vs);
+    if (!frame)
         return;
-
-    const auto& frame = vs.frames[vs.current_tick];
 
     float dt = vs.scenario.dt;
     int tick = vs.current_tick;
 
     int missing_observer_count = 0;
 
-    for (const auto& det : frame.detections) {
+    for (const auto& det : frame->detections) {
         float ex = 0.0f, ey = 0.0f;
         if (!try_get_xy_array(det, "est_pos", ex, ey)) continue;
         Vector2 est_screen = world_to_screen(ex, ey, vs);
@@ -259,8 +264,8 @@ static void draw_detections(const ViewerState& vs) {
             EntityId observer_id = static_cast<EntityId>(det["observer"].as_int());
 
             // Use replay position if available, otherwise extrapolate
-            auto pos_it = frame.entity_positions.find(observer_id);
-            if (pos_it != frame.entity_positions.end()) {
+            auto pos_it = frame->entity_positions.find(observer_id);
+            if (pos_it != frame->entity_positions.end()) {
                 observer_screen = world_to_screen(pos_it->second.x, pos_it->second.y, vs);
                 draw_los = true;
             } else {
@@ -293,12 +298,11 @@ static void draw_detections(const ViewerState& vs) {
 // --- Tracks ---
 
 static void draw_tracks(const ViewerState& vs) {
-    if (vs.current_tick < 0 || vs.current_tick >= static_cast<int>(vs.frames.size()))
+    const TickFrame* frame = current_frame_or_null(vs);
+    if (!frame)
         return;
 
-    const auto& frame = vs.frames[vs.current_tick];
-
-    for (const auto& trk : frame.track_updates) {
+    for (const auto& trk : frame->track_updates) {
         float px = 0.0f, py = 0.0f;
         if (!try_get_xy_array(trk, "pos", px, py)) continue;
         if (!trk.has("unc") || trk["unc"].type != JsonValue::NUMBER) continue;
@@ -355,16 +359,15 @@ static Color designation_color(const std::string& kind) {
 }
 
 static void draw_designations(const ViewerState& vs) {
-    if (vs.current_tick < 0 || vs.current_tick >= static_cast<int>(vs.frames.size()))
+    const TickFrame* frame = current_frame_or_null(vs);
+    if (!frame)
         return;
 
-    const auto& frame = vs.frames[vs.current_tick];
-
-    for (const auto& desig : frame.active_designations) {
+    for (const auto& desig : frame->active_designations) {
         // Find matching track position from track_updates
         float px = 0.0f, py = 0.0f;
         bool found = false;
-        for (const auto& trk : frame.track_updates) {
+        for (const auto& trk : frame->track_updates) {
             if (!trk.has("target")) continue;
             EntityId tid = static_cast<EntityId>(trk["target"].as_number());
             if (tid == desig.track_target) {
@@ -405,14 +408,14 @@ static void draw_designations(const ViewerState& vs) {
 // --- Messages & expired tracks ---
 
 static void draw_messages(const ViewerState& vs) {
-    if (vs.current_tick < 0 || vs.current_tick >= static_cast<int>(vs.frames.size()))
+    const TickFrame* frame = current_frame_or_null(vs);
+    if (!frame)
         return;
 
-    const auto& frame = vs.frames[vs.current_tick];
     float sh = static_cast<float>(GetScreenHeight());
 
     int y_offset = 0;
-    for (const auto& msg : frame.messages) {
+    for (const auto& msg : frame->messages) {
         if (!msg.has("type") || msg["type"].type != JsonValue::STRING) continue;
         std::string type = msg["type"].as_string();
         Color col;
@@ -425,7 +428,7 @@ static void draw_messages(const ViewerState& vs) {
         y_offset++;
     }
 
-    for (const auto& expired : frame.track_expired) {
+    for (const auto& expired : frame->track_expired) {
         int owner = expired.int_or("owner", -1);
         int target = expired.int_or("target", -1);
         const char* txt = TextFormat("// TRK_EXPIRED [OWN:%d TGT:%d]", owner, target);
