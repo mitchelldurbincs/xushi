@@ -151,6 +151,35 @@ static void test_missing_capabilities_rejected() {
     std::remove(path);
 }
 
+static void test_duplicate_entity_ids_rejected() {
+    const char* path = "tests/tmp_duplicate_ids.json";
+    write_temp_scenario(path,
+        "{"
+        "\"seed\":1,"
+        "\"obstacles\":[],"
+        "\"entities\":["
+        "{\"id\":7,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0],\"can_sense\":true},"
+        "{\"id\":7,\"type\":\"ground\",\"pos\":[1,0],\"vel\":[0,0],\"can_track\":true},"
+        "{\"id\":3,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0],\"is_observable\":true}"
+        "]"
+        "}");
+
+    bool caught = false;
+    std::string message;
+    try {
+        load_scenario(path);
+    } catch (const std::runtime_error& e) {
+        caught = true;
+        message = e.what();
+    }
+
+    CHECK(caught, "duplicate ids rejected");
+    CHECK(message.find(path) != std::string::npos, "duplicate id message includes path");
+    CHECK(message.find("duplicate entity id 7") != std::string::npos,
+          "duplicate id message includes id");
+    std::remove(path);
+}
+
 static void test_belief_rate_units_per_second_keys() {
     const char* path = "scenarios/__tmp_belief_units_test.json";
     std::ofstream out(path);
@@ -243,6 +272,7 @@ int main() {
     test_custom_role_accepted();
     test_capability_override();
     test_missing_capabilities_rejected();
+    test_duplicate_entity_ids_rejected();
     test_belief_rate_units_per_second_keys();
     test_invalid_validations();
     TEST_REPORT();
