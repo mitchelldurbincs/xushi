@@ -278,7 +278,44 @@ build\Release\xushi_viewer.exe scenarios\default.replay
 | R | Toggle sensor range overlay |
 | W | Toggle waypoint path overlay |
 | D | Toggle designation overlay |
+| T | Toggle per-track status strip |
 | Timeline bar | Click / drag to scrub |
+
+### Visual Indicators
+
+The viewer overlays are intended to separate **ground truth**, **sensor evidence**, and **belief state quality**:
+
+- **Entity markers**
+  - **Blue circle**: sensor-capable platform (`can_sense`).
+  - **Green square marker**: tracker-capable platform (`can_track`).
+  - **Red circle**: observable target (`is_observable`).
+  - **Purple circle**: multi-capability entity (more than one capability flag).
+
+- **Detection/measurement indicators**
+  - **Green dot**: detection estimate (`detection.est_pos` from replay log).
+  - **Green LOS segment**: observer-to-estimate line for a detection.
+
+- **Belief-track uncertainty bubble**
+  - Bubble center and cross indicate `track_update.pos`.
+  - Bubble radius reflects `track_update.unc` (uncertainty).
+  - Bubble alpha scales with `track_update.conf` (confidence).
+  - **FRESH** tracks use brighter yellow/orange styling; degraded states darken.
+
+- **Per-track status strip (`T`)**
+  - One row per current `track_update`.
+  - `O#/T#`: track owner and target IDs.
+  - `S:#`: inferred source sensor ID (latest matching `detection.observer` for target).
+  - `A:#t`: message age in ticks since last update for that owner/target.
+  - `L:#t`: inferred communication latency in ticks from `msg_sent.delivery_tick - msg_sent.tick`.
+  - `C` / `U`: confidence and uncertainty from track state.
+  - Right-side status text + color strip:
+    - **Green** = `FRESH`
+    - **Amber** = `STALE`
+    - **Red** = `EXPIRED`
+  - Cause tag (best-effort replay inference):
+    - **`dropped comm`** when recent `msg_dropped` events affected the owner.
+    - **`LOS blocked`** when a track is expired without recent comm drop evidence.
+    - **`negative evidence`** when the track is stale without stronger comm/LOS signal.
 
 ## Testing
 
