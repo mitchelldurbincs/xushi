@@ -374,26 +374,6 @@ const Scenario::EffectProfile* SimEngine::find_effect_profile(uint32_t index) co
 }
 
 void SimEngine::adjudicate_actions(int tick, TickHooks& hooks) {
-    constexpr float kMinIdentityConfidenceForEngage = 0.0f;
-    constexpr int kMinCorroborationForEngage = 1;
-    constexpr float kDefaultEffectRange = 80.0f;
-    constexpr float kEffectRangeStep = 20.0f;
-    constexpr Vec2 kProtectedZoneCenter{0.0f, 0.0f};
-    constexpr float kProtectedZoneRadius = 10.0f;
-    constexpr float kFriendlyRiskRadius = 8.0f;
-
-    auto get_entity = [&](EntityId id) -> const ScenarioEntity* {
-        for (const auto& entity : entities_) {
-            if (entity.id == id)
-                return &entity;
-        }
-        return nullptr;
-    };
-
-    auto effect_profile_range = [&](uint32_t effect_profile_index) -> float {
-        return kDefaultEffectRange + static_cast<float>(effect_profile_index) * kEffectRangeStep;
-    };
-
     for (const auto& req : pending_actions_) {
         ActionResult result;
         result.request = req;
