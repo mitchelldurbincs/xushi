@@ -10,7 +10,6 @@
 #include "comm.h"
 #include "movement.h"
 #include "policy.h"
-#include "task.h"
 #include "map.h"
 #include "rng.h"
 #include <cstdint>
@@ -43,10 +42,6 @@ struct TickHooks {
     virtual void on_track_update(int /*tick*/, EntityId /*owner*/, const Track& /*trk*/) {}
     virtual void on_track_expired(int /*tick*/, EntityId /*owner*/, EntityId /*target*/) {}
     virtual void on_belief_invariant_check(const BeliefState& /*belief*/) {}
-
-    // Tasks
-    virtual void on_task_assigned(int /*tick*/, const Task& /*task*/, const ScenarioEntity& /*entity*/) {}
-    virtual void on_task_completed(int /*tick*/, EntityId /*entity*/, EntityId /*target*/, bool /*corroborated*/) {}
 
     // Actions
     virtual void on_action_resolved(int /*tick*/, const ActionResult& /*result*/) {}
@@ -84,8 +79,6 @@ public:
     const std::map<EntityId, Task>& get_active_tasks() const { return active_tasks_; }
     SystemStats& stats() { return stats_; }
     const SystemStats& stats() const { return stats_; }
-    int tasks_assigned() const { return tasks_assigned_; }
-    int tasks_completed() const { return tasks_completed_; }
 
     // World hash for determinism checking
     uint64_t compute_world_hash() const;
@@ -100,7 +93,6 @@ private:
     void tick_sensing(int tick, TickHooks& hooks);
     void tick_communication(int tick, TickHooks& hooks, std::vector<Message>& delivered);
     void tick_belief(int tick, TickHooks& hooks, const std::vector<Message>& delivered);
-    void tick_tasks(int tick, TickHooks& hooks);
     void tick_actions(int tick, TickHooks& hooks);
     void tick_periodic_snapshots(int tick, TickHooks& hooks);
     void move_toward_target(ScenarioEntity& entity, const Vec2& target) const;
@@ -118,10 +110,6 @@ private:
     SystemStats stats_;
     NullPolicy null_policy_;
     Policy* policy_ = nullptr;
-    std::map<EntityId, Task> active_tasks_;
-    int tasks_assigned_ = 0;
-    int tasks_completed_ = 0;
-
     // Game mode
     GameMode* game_mode_ = nullptr;
     GameModeResult last_game_mode_result_;

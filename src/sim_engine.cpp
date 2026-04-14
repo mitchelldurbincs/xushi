@@ -34,9 +34,6 @@ void SimEngine::init(const Scenario& scn, Policy* policy, GameMode* game_mode) {
 
     stats_ = SystemStats{};
     policy_ = policy ? policy : &null_policy_;
-    active_tasks_.clear();
-    tasks_assigned_ = 0;
-    tasks_completed_ = 0;
 
     pending_actions_.clear();
     designations_.clear();
@@ -69,7 +66,6 @@ void SimEngine::step(int tick, TickHooks& hooks) {
     run_phase("communication", [&] { tick_communication(tick, hooks, delivered); });
     run_phase("belief", [&] { tick_belief(tick, hooks, delivered); });
     run_phase("actions", [&] { tick_actions(tick, hooks); });
-    run_phase("tasks", [&] { tick_tasks(tick, hooks); });
     run_phase("periodic_snapshots", [&] { tick_periodic_snapshots(tick, hooks); });
 
     // ── Game mode: tick end ──
@@ -125,13 +121,6 @@ void SimEngine::tick_movement(int tick, TickHooks& hooks) {
                     continue;
                 }
             }
-        }
-
-        auto task_it = active_tasks_.find(e.id);
-        if (task_it != active_tasks_.end()) {
-            move_toward_target(e, task_it->second.target_position);
-            hooks.on_entity_moved(tick, e.id, e.position);
-            continue;
         }
 
         if (e.can_sense) {
