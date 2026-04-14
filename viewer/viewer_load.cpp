@@ -44,7 +44,7 @@ static const char* json_type_name(JsonValue::Type type) {
 
 static const JsonValue& get_required_value_of_type(const JsonValue& obj, const std::string& key,
                                                    JsonValue::Type expected_type,
-                                                   const std::string& expected_desc,
+                                                   const char* expected_desc,
                                                    const std::string& context) {
     if (!obj.has(key))
         throw std::runtime_error(context + ": missing required key '" + key + "'");
