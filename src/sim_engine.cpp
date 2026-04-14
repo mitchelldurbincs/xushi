@@ -35,9 +35,6 @@ void SimEngine::init(const Scenario& scn, Policy* policy, GameMode* game_mode) {
 
     stats_ = SystemStats{};
     policy_ = policy ? policy : &null_policy_;
-    active_tasks_.clear();
-    tasks_assigned_ = 0;
-    tasks_completed_ = 0;
 
     pending_actions_.clear();
     designations_.clear();
@@ -70,7 +67,6 @@ void SimEngine::step(int tick, TickHooks& hooks) {
     run_phase("communication", [&] { tick_communication(tick, delivered); });
     run_phase("belief", [&] { tick_belief(tick, hooks, delivered); });
     run_phase("actions", [&] { tick_actions(tick, hooks); });
-    run_phase("tasks", [&] { tick_tasks(tick, hooks); });
     run_phase("periodic_snapshots", [&] { tick_periodic_snapshots(tick, hooks); });
 
     // ── Game mode: tick end ──
@@ -126,13 +122,6 @@ void SimEngine::tick_movement(int tick, TickHooks& hooks) {
                     continue;
                 }
             }
-        }
-
-        auto task_it = active_tasks_.find(e.id);
-        if (task_it != active_tasks_.end()) {
-            move_toward_target(e, task_it->second.target_position);
-            hooks.on_entity_moved(tick, e.id, e.position);
-            continue;
         }
 
         if (e.can_sense) {
@@ -307,73 +296,6 @@ void SimEngine::tick_belief(int tick, TickHooks& hooks, const std::vector<Messag
         for (EntityId id : tracked_before[gid]) {
             if (!belief.find_track(id))
                 hooks.on_track_expired(tick, gid, id);
-        }
-    }
-}
-
-void SimEngine::tick_tasks(int tick, TickHooks& hooks) {
-    std::vector<EntityId> completed_tasks;
-    for (const auto& [eid, task] : active_tasks_) {
-        ScenarioEntity* assigned = nullptr;
-        for (auto& e : entities_) {
-            if (e.id == eid) { assigned = &e; break; }
-        }
-        if (!assigned) continue;
-
-        Vec2 diff = task.target_position - assigned->position;
-        float dist_sq = diff.x * diff.x + diff.y * diff.y;
-        if (dist_sq > kTaskArrivalRadius * kTaskArrivalRadius) continue;
-
-        bool corroborated = false;
-        for (auto& [gid, belief] : beliefs_) {
-            const Track* trk = belief.find_track(task.target_id);
-            if (trk && trk->status == TrackStatus::FRESH) {
-                corroborated = true;
-                break;
-            }
-        }
-        completed_tasks.push_back(eid);
-        tasks_completed_++;
-        hooks.on_task_completed(tick, eid, task.target_id, corroborated);
-    }
-    for (EntityId eid : completed_tasks)
-        active_tasks_.erase(eid);
-
-    for (auto* tracker_ent : trackers_) {
-        auto& belief = beliefs_[tracker_ent->id];
-        for (const auto& trk : belief.tracks) {
-            if (trk.status != TrackStatus::STALE) continue;
-            if (trk.confidence >= kTaskConfidenceThreshold) continue;
-
-            bool already_tasked = false;
-            for (const auto& [eid, t] : active_tasks_) {
-                if (t.target_id == trk.target) { already_tasked = true; break; }
-            }
-            if (already_tasked) continue;
-
-            ScenarioEntity* best = nullptr;
-            float best_dist = kInfDistance;
-            for (auto& e : entities_) {
-                if (!e.can_sense) continue;
-                if (active_tasks_.count(e.id)) continue;
-                float d = (e.position - trk.estimated_position).length();
-                if (d < best_dist) {
-                    best = &e;
-                    best_dist = d;
-                }
-            }
-
-            if (best) {
-                Task task;
-                task.type = Task::Type::VERIFY;
-                task.assigned_to = best->id;
-                task.target_id = trk.target;
-                task.target_position = trk.estimated_position;
-                task.assigned_tick = tick;
-                active_tasks_[best->id] = task;
-                tasks_assigned_++;
-                hooks.on_task_assigned(tick, task, *best);
-            }
         }
     }
 }

@@ -47,8 +47,6 @@ SimResult run_scenario_headless(const Scenario& scn) {
         engine.step(tick, hooks);
 
     result.stats = engine.stats();
-    result.tasks_assigned = engine.tasks_assigned();
-    result.tasks_completed = engine.tasks_completed();
     result.final_track_count = 0;
     for (const auto& [gid, belief] : engine.get_beliefs())
         result.final_track_count += static_cast<int>(belief.tracks.size());
