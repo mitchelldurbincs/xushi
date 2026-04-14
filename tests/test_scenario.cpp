@@ -304,7 +304,7 @@ static void test_invalid_effect_profile_reference(TestContext& ctx) {
     std::remove(path);
 }
 
-static void test_invalid_effect_profile_hit_probability() {
+static void test_invalid_effect_profile_hit_probability(TestContext& ctx) {
     const char* path = "tests/tmp_invalid_hit_probability.json";
     write_temp_scenario(path,
         "{"
@@ -329,11 +329,11 @@ static void test_invalid_effect_profile_hit_probability() {
         message = e.what();
     }
 
-    CHECK(caught, "invalid effect profile hit_probability rejected");
-    CHECK(message.find(path) != std::string::npos, "invalid hit_probability includes path");
-    CHECK(message.find("effect_profiles[0].hit_probability") != std::string::npos,
+    ctx.check(caught, "invalid effect profile hit_probability rejected");
+    ctx.check(message.find(path) != std::string::npos, "invalid hit_probability includes path");
+    ctx.check(message.find("effect_profiles[0].hit_probability") != std::string::npos,
           "invalid hit_probability includes field");
-    CHECK(message.find("must be in [0, 1], got 1.25") != std::string::npos,
+    ctx.check(message.find("must be in [0, 1], got 1.25") != std::string::npos,
           "invalid hit_probability includes range");
     std::remove(path);
 }
@@ -353,5 +353,6 @@ int main() {
     test_belief_rate_units_per_second_keys(ctx);
     test_invalid_validations(ctx);
     test_invalid_effect_profile_reference(ctx);
+    test_invalid_effect_profile_hit_probability(ctx);
     return ctx.report_and_exit_code();
 }
