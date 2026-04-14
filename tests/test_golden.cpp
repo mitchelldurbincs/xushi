@@ -52,7 +52,7 @@ static void test_delayed_comms_belief_lags(TestContext& ctx) {
 
     MessagePayload payload;
     payload.type = MessagePayload::OBSERVATION;
-    payload.observation = obs;
+    payload.observation = to_shared_observation(obs);
     comms.send(0, 1, payload, 0, 0.0f, ch, rng);
 
     // Ticks 0-4: ground has no track
@@ -61,7 +61,7 @@ static void test_delayed_comms_belief_lags(TestContext& ctx) {
         std::vector<Message> delivered;
         comms.deliver(tick, delivered);
         for (const auto& msg : delivered)
-            belief.update(msg.payload.observation, tick);
+            belief.update(to_observation(msg.payload.observation), tick);
         belief.decay(tick, 1.0f, cfg);
         if (belief.find_track(1) != nullptr)
             no_track_before = false;
@@ -73,7 +73,7 @@ static void test_delayed_comms_belief_lags(TestContext& ctx) {
     comms.deliver(5, delivered);
     ctx.check(delivered.size() == 1, "message delivered on tick 5");
     for (const auto& msg : delivered)
-        belief.update(msg.payload.observation, 5);
+        belief.update(to_observation(msg.payload.observation), 5);
     belief.decay(5, 1.0f, cfg);
     ctx.check(belief.find_track(1) != nullptr, "delayed comms => track appears at delivery tick");
 }
@@ -148,7 +148,7 @@ static void test_distance_comms_far_belief_lags_near(TestContext& ctx) {
     // Send to far sensor (200m away)
     MessagePayload payload;
     payload.type = MessagePayload::OBSERVATION;
-    payload.observation = obs;
+    payload.observation = to_shared_observation(obs);
     int delivery_tick = comms.send(0, 1, payload, 0, 200.0f, ch, rng);
 
     // Far sensor should NOT have track before delivery
@@ -157,7 +157,7 @@ static void test_distance_comms_far_belief_lags_near(TestContext& ctx) {
         std::vector<Message> delivered;
         comms.deliver(tick, delivered);
         for (const auto& msg : delivered)
-            far_belief.update(msg.payload.observation, tick);
+            far_belief.update(to_observation(msg.payload.observation), tick);
         far_belief.decay(tick, 1.0f, cfg);
         if (far_belief.find_track(2) != nullptr)
             no_track_before = false;
@@ -169,7 +169,7 @@ static void test_distance_comms_far_belief_lags_near(TestContext& ctx) {
     comms.deliver(delivery_tick, delivered);
     ctx.check(delivered.size() == 1, "distance comms: message delivered at expected tick");
     for (const auto& msg : delivered)
-        far_belief.update(msg.payload.observation, delivery_tick);
+        far_belief.update(to_observation(msg.payload.observation), delivery_tick);
     ctx.check(far_belief.find_track(2) != nullptr, "distance comms: far has track at delivery tick");
 }
 
