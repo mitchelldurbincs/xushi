@@ -4,6 +4,8 @@
 #include "constants.h"
 #include "stats.h"
 #include "belief.h"
+#include "belief_state.h"
+#include "truth_state.h"
 #include "action.h"
 #include "comm.h"
 #include "movement.h"
@@ -73,7 +75,8 @@ public:
 
     // Accessors for result extraction
     const std::vector<ScenarioEntity>& get_entities() const { return entities_; }
-    const std::map<EntityId, BeliefState>& get_beliefs() const { return beliefs_; }
+    const std::map<EntityId, BeliefState>& get_beliefs() const { return beliefs_.states(); }
+    const std::map<EntityId, Task>& get_active_tasks() const { return active_tasks_; }
     SystemStats& stats() { return stats_; }
     const SystemStats& stats() const { return stats_; }
 
@@ -88,7 +91,7 @@ private:
     void tick_cooldowns();
     void tick_movement(int tick, TickHooks& hooks);
     void tick_sensing(int tick, TickHooks& hooks);
-    void tick_communication(int tick, std::vector<Message>& delivered);
+    void tick_communication(int tick, TickHooks& hooks, std::vector<Message>& delivered);
     void tick_belief(int tick, TickHooks& hooks, const std::vector<Message>& delivered);
     void tick_actions(int tick, TickHooks& hooks);
     void tick_periodic_snapshots(int tick, TickHooks& hooks);
@@ -102,7 +105,8 @@ private:
     std::vector<ScenarioEntity*> observables_;
     Rng rng_{0};
     CommSystem comms_;
-    std::map<EntityId, BeliefState> beliefs_;
+    BeliefStateStore beliefs_;
+    TruthState truth_state_;
     SystemStats stats_;
     NullPolicy null_policy_;
     Policy* policy_ = nullptr;
