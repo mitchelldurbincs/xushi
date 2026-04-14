@@ -66,6 +66,7 @@ void SimEngine::step(int tick, TickHooks& hooks) {
     run_phase("communication", [&] { tick_communication(tick, hooks, delivered); });
     run_phase("belief", [&] { tick_belief(tick, hooks, delivered); });
     run_phase("actions", [&] { tick_actions(tick, hooks); });
+    run_phase("tasks", [&] { tick_tasks(tick, hooks); });
     run_phase("periodic_snapshots", [&] { tick_periodic_snapshots(tick, hooks); });
 
     // ── Game mode: tick end ──

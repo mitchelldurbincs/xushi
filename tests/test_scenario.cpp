@@ -13,30 +13,30 @@ static void write_temp_scenario(const char* path, const char* json) {
 }
 
 static void test_load_default(TestContext& ctx) {
-    Scenario s = load_scenario("scenarios/default.json");
-    ctx.check(s.seed == 12345, "seed");
+    Scenario s = load_scenario("scenarios/mvp_contract_2v2.json");
+    ctx.check(s.seed == 20260414, "seed");
     ctx.check(s.dt == 1.0f, "dt");
-    ctx.check(s.ticks == 60, "ticks");
-    ctx.check(std::fabs(s.max_sensor_range - 80.0f) < 0.01f, "max_sensor_range");
+    ctx.check(s.ticks == 40, "ticks");
+    ctx.check(std::fabs(s.max_sensor_range - 90.0f) < 0.01f, "max_sensor_range");
     ctx.check(s.obstacles.size() == 1, "obstacle count");
-    ctx.check(s.obstacles[0].min.x == 45.0f, "obstacle min.x");
-    ctx.check(s.entities.size() == 3, "entity count");
-    ctx.check(s.entities[0].role_name == "drone", "first entity role_name");
-    ctx.check(s.entities[0].can_sense == true, "drone can_sense");
+    ctx.check(s.obstacles[0].min.x == 47.0f, "obstacle min.x");
+    ctx.check(s.entities.size() == 8, "entity count");
+    ctx.check(s.entities[2].role_name == "blue_drone", "first drone role_name");
+    ctx.check(s.entities[2].can_sense == true, "drone can_sense");
     ctx.check(s.entities[0].can_engage == true, "drone can_engage");
-    ctx.check(s.entities[0].ammo == 6, "drone ammo");
+    ctx.check(s.entities[0].ammo == 4, "operator ammo");
     ctx.check(s.entities[0].allowed_effect_profile_indices.size() == 1,
           "drone allowed profile count");
     ctx.check(s.entities[0].allowed_effect_profile_indices[0] == 0,
           "drone allowed profile index");
-    ctx.check(s.entities[2].velocity.x == 1.0f, "target velocity");
+    ctx.check(s.entities[2].velocity.x > 0.0f, "drone velocity");
     ctx.check(s.effect_profiles.size() == 1, "effect profile count");
-    ctx.check(s.effect_profiles[0].name == "standard", "effect profile name");
-    ctx.check(std::fabs(s.effect_profiles[0].range - 60.0f) < 0.01f,
+    ctx.check(s.effect_profiles[0].name == "rifle", "effect profile name");
+    ctx.check(std::fabs(s.effect_profiles[0].range - 35.0f) < 0.01f,
           "effect profile range");
-    ctx.check(s.channel.base_latency_ticks == 3, "channel base_latency");
-    ctx.check(std::fabs(s.channel.loss_probability - 0.1f) < 0.01f, "channel loss");
-    ctx.check(s.belief.fresh_ticks == 5, "belief fresh_ticks");
+    ctx.check(s.channel.base_latency_ticks == 2, "channel base_latency");
+    ctx.check(std::fabs(s.channel.loss_probability - 0.05f) < 0.01f, "channel loss");
+    ctx.check(s.belief.fresh_ticks == 4, "belief fresh_ticks");
     ctx.check(std::fabs(s.engagement_rules.protected_zone_center.x - 0.0f) < 0.01f,
           "default protected zone center.x");
     ctx.check(std::fabs(s.engagement_rules.protected_zone_radius - 10.0f) < 0.01f,

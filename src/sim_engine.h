@@ -12,6 +12,7 @@
 #include "policy.h"
 #include "map.h"
 #include "rng.h"
+#include "task.h"
 #include <cstdint>
 #include <map>
 #include <string>
@@ -59,6 +60,10 @@ struct TickHooks {
 
     // Game mode
     virtual void on_game_mode_end(int /*tick*/, const GameModeResult& /*result*/) {}
+
+    // Tasking
+    virtual void on_task_assigned(int /*tick*/, const Task& /*task*/, const ScenarioEntity& /*assignee*/) {}
+    virtual void on_task_completed(int /*tick*/, EntityId /*assignee*/, EntityId /*target*/, bool /*corroborated*/) {}
 };
 
 // Shared simulation engine. Owns all mutable tick state.
@@ -93,6 +98,7 @@ private:
     void tick_sensing(int tick, TickHooks& hooks);
     void tick_communication(int tick, TickHooks& hooks, std::vector<Message>& delivered);
     void tick_belief(int tick, TickHooks& hooks, const std::vector<Message>& delivered);
+    void tick_tasks(int tick, TickHooks& hooks);
     void tick_actions(int tick, TickHooks& hooks);
     void tick_periodic_snapshots(int tick, TickHooks& hooks);
     void move_toward_target(ScenarioEntity& entity, const Vec2& target) const;
@@ -107,6 +113,9 @@ private:
     CommSystem comms_;
     BeliefStateStore beliefs_;
     TruthState truth_state_;
+    std::map<EntityId, Task> active_tasks_;
+    int tasks_assigned_ = 0;
+    int tasks_completed_ = 0;
     SystemStats stats_;
     NullPolicy null_policy_;
     Policy* policy_ = nullptr;

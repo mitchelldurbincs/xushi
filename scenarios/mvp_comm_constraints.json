@@ -1,0 +1,20 @@
+{
+  "seed": 20260415,
+  "dt": 1.0,
+  "ticks": 20,
+  "max_sensor_range": 120.0,
+  "obstacles": [],
+  "channel": {
+    "base_latency": 3,
+    "per_distance": 0.05,
+    "loss": 0.0
+  },
+  "entities": [
+    {"id": 0, "type": "blue_operator", "team": 0, "pos": [10, 50], "vel": [0, 0], "can_track": true, "is_observable": true},
+    {"id": 1, "type": "blue_drone", "team": 0, "pos": [0, 50], "vel": [0, 0], "can_sense": true, "is_observable": true},
+    {"id": 2, "type": "red_operator", "team": 1, "pos": [90, 50], "vel": [0, 0], "can_track": true, "is_observable": true},
+    {"id": 3, "type": "red_drone", "team": 1, "pos": [100, 50], "vel": [0, 0], "can_sense": true, "is_observable": true},
+    {"id": 20, "type": "cyber_node", "team": -1, "pos": [50, 20], "vel": [0, 0], "can_track": true, "is_observable": true},
+    {"id": 21, "type": "door_light_control", "team": -1, "pos": [50, 80], "vel": [0, 0], "is_observable": true}
+  ]
+}
