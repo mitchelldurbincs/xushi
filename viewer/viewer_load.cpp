@@ -57,24 +57,20 @@ static const JsonValue& get_required_value_of_type(const JsonValue& obj, const s
 }
 
 static const std::string& get_required_string(const JsonValue& obj, const std::string& key, const std::string& context) {
-    const auto& v = get_required_value_of_type(obj, key, JsonValue::STRING, "string", context);
-    return v.as_string();
+    return get_required_value_of_type(obj, key, JsonValue::STRING, "string", context).as_string();
 }
 
 static int get_required_int(const JsonValue& obj, const std::string& key, const std::string& context) {
-    const auto& v = get_required_value_of_type(obj, key, JsonValue::NUMBER, "number/int", context);
-    return v.as_int();
+    return get_required_value_of_type(obj, key, JsonValue::NUMBER, "number/int", context).as_int();
 }
 
 static double get_required_number(const JsonValue& obj, const std::string& key, const std::string& context) {
-    const auto& v = get_required_value_of_type(obj, key, JsonValue::NUMBER, "number", context);
-    return v.as_number();
+    return get_required_value_of_type(obj, key, JsonValue::NUMBER, "number", context).as_number();
 }
 
 static const std::vector<JsonValue>& get_required_array(const JsonValue& obj, const std::string& key, size_t min_len,
                                                         const std::string& context) {
-    const auto& v = get_required_value_of_type(obj, key, JsonValue::ARRAY, "array", context);
-    const auto& arr = v.as_array();
+    const auto& arr = get_required_value_of_type(obj, key, JsonValue::ARRAY, "array", context).as_array();
     if (arr.size() < min_len)
         throw std::runtime_error(context + ": key '" + key + "' expected array len >= " + std::to_string(min_len));
     return arr;
