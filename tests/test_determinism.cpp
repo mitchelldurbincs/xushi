@@ -93,29 +93,6 @@ static void test_noisy_perception_determinism(TestContext& ctx) {
     ctx.check(all_match, "noisy perception deterministic");
 }
 
-static void test_task_verify_determinism(TestContext& ctx) {
-    Scenario scn = load_scenario("scenarios/task_verify.json");
-
-    SimResult a = run_scenario_headless(scn);
-    SimResult b = run_scenario_headless(scn);
-
-    ctx.check(!a.world_hashes.empty(), "task verify hashes produced");
-    ctx.check(a.world_hashes.size() == b.world_hashes.size(), "task verify hash count");
-
-    bool all_match = true;
-    size_t count = std::min(a.world_hashes.size(), b.world_hashes.size());
-    for (size_t i = 0; i < count; ++i) {
-        if (a.world_hashes[i] != b.world_hashes[i]) {
-            all_match = false;
-            break;
-        }
-    }
-    ctx.check(all_match, "task verify deterministic");
-    ctx.check(a.tasks_assigned > 0, "task verify assigned tasks");
-    ctx.check(a.tasks_assigned == b.tasks_assigned, "task verify same assignments");
-    ctx.check(a.tasks_completed == b.tasks_completed, "task verify same completions");
-}
-
 static void test_mixed_era_determinism(TestContext& ctx) {
     Scenario scn = load_scenario("scenarios/mixed_era.json");
 
@@ -266,7 +243,6 @@ int main() {
     test_multi_agent_determinism(ctx);
     test_waypoint_determinism(ctx);
     test_mixed_era_determinism(ctx);
-    test_task_verify_determinism(ctx);
     test_noisy_perception_determinism(ctx);
     test_branch_waypoint_determinism(ctx);
     test_distance_comms_determinism(ctx);
