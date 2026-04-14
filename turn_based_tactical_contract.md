@@ -17,6 +17,13 @@ Three intertwined layers:
 - **Information**: drones, cameras, and direct sighting create tracks, last-known positions, and shared squad awareness.
 - **Cyber**: teams manipulate doors, cameras, lights, and comms to reshape the map and the feed.
 
+### Design test for every non-shoot action
+
+> Does it **create certainty**, **deny certainty**, or **weaponize false certainty**?
+
+If an action does not pass this test, it does not belong in the information or cyber layer.
+Good intel should be mechanically rewarding to act on, not just useful to have.
+
 ---
 
 ## 2. Round Structure
@@ -36,20 +43,21 @@ Each round has four phases executed in strict order.
 
 ### Phase 2 — Support Phase
 
-Teams resolve support actions **in team order** (attacker first, then defender).
-Effects are immediate — an attacker jam affects the defender's support actions.
+Teams resolve support actions **in initiative order** (the team with initiative this round goes first).
+Initiative alternates each round (attacker has initiative on round 1).
+Effects are immediate — the first team's jam affects the second team's support actions.
 
 Each team spends from its **support AP pool** (2 SAP).
 Available support actions:
 
 | Action           | Cost  | Effect                                               |
 |------------------|-------|------------------------------------------------------|
-| Drone move       | 1 SAP | Move drone up to 3 cells (path must be passable)     |
-| Drone scan       | 1 SAP | Drone reports all visible enemies as tracks           |
+| Drone move       | 1 SAP | Move drone to a target cell within 3 cells (engine picks shortest legal path) |
+| Drone scan       | 1 SAP | Verify: all enemies in drone vision get FRESH tracks with uncertainty 0 and confirmed class_id. Clears any spoofed tracks in drone vision. |
 | Cyber: jam       | 1 SAP | Degrade comms in 3-cell radius for 1 round           |
 | Cyber: lock door | 1 SAP | Lock a door within cyber range (3 cells of friendly) |
 | Cyber: unlock    | 1 SAP | Unlock a locked door within cyber range              |
-| Cyber: cut lights| 1 SAP | Reduce vision range by 3 cells in target room, 2 rounds |
+| Cyber: cut lights| 1 SAP | Reduce vision range by 3 in target room; LOS contacts in dark room produce STALE tracks (not FRESH). 2 rounds. |
 | Cyber: spoof     | 1 SAP | Inject false track into enemy team belief             |
 | Cyber: take cam  | 1 SAP | Gain feed from a camera within cyber range            |
 
@@ -61,7 +69,7 @@ After both teams resolve support:
 ### Phase 3 — Activation Phase
 
 Teams **alternate** activating one operator at a time.
-Attacker activates first on round 1. Initiative alternates each round.
+The team with initiative activates first (attacker on round 1, then alternates).
 
 Each activation:
 1. Select an unactivated operator.
@@ -165,13 +173,19 @@ First scenario: 16 wide x 12 tall.
 
 ### Hit probability modifiers
 
-| Condition        | Modifier |
-|------------------|----------|
-| Target in COVER  | -25%     |
-| Overwatch snap   | -15%     |
-| Target moved this round | -10% |
+| Condition                  | Modifier | Rationale                                      |
+|----------------------------|----------|-------------------------------------------------|
+| FRESH track on target      | +10%     | Good intel pays off — you know exactly where they are |
+| Target in COVER            | -25%     | Cover is the primary defensive mechanic         |
+| STALE track on target      | -20%     | Acting on old info is risky                     |
+| Overwatch snap fire        | -15%     | Reaction shots are hurried                      |
+| Target moved this round    | -10%     | Moving targets are harder to hit                |
 
 Modifiers stack additively. Minimum hit probability: 5%. Maximum: 95%.
+
+The FRESH bonus and STALE penalty make information work feel mechanically rewarding.
+A drone scan that refreshes a track to FRESH directly improves the next shot by 30 percentage points
+compared to shooting at a STALE target (from -20% to +10%).
 
 ### Actions
 
@@ -215,10 +229,15 @@ All actions cost AP from the activating operator's pool (3 AP max).
 - Each team has 1 drone. Deployed by an operator (1 AP). Not re-deployable if destroyed.
 - Drones are controlled during the **support phase** using support AP.
 - Drones cannot: shoot, open doors, interact with objects, carry things.
-- Drones can: move, observe (passive — always reports vision), scan (active — 1 SAP).
-- Drone vision updates team belief during support phase resolution.
+- Drones can: move, observe (passive — creates tracks at normal quality), scan (active — 1 SAP, see below).
+- **Passive observation**: drone vision updates team belief during support phase resolution. Tracks from passive observation behave normally (FRESH, decay to STALE, etc.).
+- **Active scan**: costs 1 SAP. Qualitatively different from passive observation:
+  - All enemies in drone vision get tracks upgraded to FRESH with uncertainty 0 and confirmed class_id.
+  - Any spoofed tracks in drone vision are identified and removed from team belief.
+  - This is the "verify" action — it creates high-confidence intel and cleans disinformation.
+  - Scan makes the drone worth its cost: passive observation tells you something is there, scan tells you exactly what and where, and clears traps.
 - Battery decrements by 1 at start of each round (after deployment). At 0 battery, drone is grounded (cannot move, still reports vision from current cell until destroyed).
-- **Noise**: enemies within noise radius (2 cells) detect the drone's presence (creates a track of the drone, but drone position is uncertain within noise radius).
+- **Noise**: drone movement creates a noise event (see Section 8, Noise Events). Enemies within 2 cells who lack LOS to the drone get a STALE track with uncertainty 2 cells. Enemies with LOS get a normal precise track.
 - **Comm link**: drone feeds require unbroken comms. If the drone is in a jammed zone, its feed does NOT update team belief. The drone still sees locally, but the team doesn't benefit.
 - Drones fly over COVER cells but cannot pass through WALL cells or CLOSED doors.
 
@@ -243,15 +262,17 @@ A cyber action targets a device or location that a friendly unit (operator or dr
 
 ### Actions (support phase, cost 1 SAP each)
 
-| Action      | Target       | Effect                                                          | Duration   |
-|-------------|-------------|------------------------------------------------------------------|------------|
-| Jam         | Cell         | All units within 3-cell radius have degraded comms: tracks from jammed units are NOT shared during next support phase. | 1 round    |
-| Lock door   | Door         | Door becomes LOCKED. Requires breach or unlock to open.          | Permanent until unlocked |
-| Unlock door | Door         | LOCKED door becomes CLOSED (can now be opened normally).         | Instant    |
-| Cut lights  | Room         | All units in target room have vision range reduced by 3 cells.   | 2 rounds   |
-| Spoof       | Cell         | Inject a false track into enemy team belief at target cell. Confidence 0.6, class_id 0 (unknown). | Decays normally |
-| Take camera | Camera       | Transfer camera ownership to your team. Camera feeds now update your belief. | Until re-taken |
-| Scan network| Adjacent device | Reveal all devices connected to the same room or within 5 cells.| Instant    |
+Every cyber action must pass the design test: create, deny, or weaponize certainty.
+
+| Action      | Target       | Certainty role     | Effect                                                          | Duration   |
+|-------------|-------------|--------------------|-----------------------------------------------------------------|------------|
+| Jam         | Cell         | **Denies**         | All units within 3-cell radius have degraded comms: tracks from jammed units are NOT shared. | 1 round    |
+| Lock door   | Door         | **Denies** (future)| Door becomes LOCKED. Denies future sight lines and movement until breached. | Permanent until unlocked |
+| Unlock door | Door         | **Creates** (future)| LOCKED door becomes CLOSED (can now be opened normally).       | Instant    |
+| Cut lights  | Room         | **Denies**         | All units in target room have vision range reduced by 3 cells. Direct LOS contacts from darkened units produce STALE tracks instead of FRESH. | 2 rounds   |
+| Spoof       | Cell         | **Weaponizes**     | Inject a false track into enemy team belief at target cell. Confidence 0.6, class_id 0 (unknown). | Decays normally |
+| Take camera | Camera       | **Creates**        | Transfer camera ownership to your team. Camera feeds now update your belief. | Until re-taken |
+| Scan network| Adjacent device | **Creates**     | Reveal all devices connected to the same room or within 5 cells.| Instant    |
 
 ### Operator cyber (physical access)
 
@@ -352,11 +373,32 @@ Direct LOS / drone scan → FRESH (confidence ~1.0, uncertainty ~0)
 | uncertainty_growth_per_round | 1.0 cells |
 | confidence_decay_per_round   | 0.15    |
 
+### Noise events
+
+Loud actions create information for the opposing team even without direct LOS.
+Noise events create tracks in the opposing team's belief.
+
+| Source          | Hearing range | Track quality                                              |
+|-----------------|---------------|------------------------------------------------------------|
+| Breach          | 6 cells       | STALE track of the breacher, uncertainty 3 cells, centered on door |
+| Gunshot         | 8 cells       | STALE track of the shooter, uncertainty 2 cells, centered on shooter's cell |
+| Drone movement  | 2 cells       | STALE track of the drone, uncertainty 2 cells              |
+
+Rules:
+- Noise creates tracks only for enemies **within hearing range** who do **not** already have LOS to the source. (If they have LOS, they already have a better track.)
+- Noise tracks are always STALE (not FRESH). They tell you "something happened over there" but not exactly where.
+- Noise travels through walls and closed doors (sound carries). It does NOT create LOS.
+- Noise tracks decay normally.
+- **Quiet actions** (open/close door, peek, move, interact) do not create noise events.
+
+Noise makes loud actions a real information tradeoff: breaching gets you through a door but tells the enemy roughly where you are. Suppressing with gunfire reveals your position. The drone's hum gives away its sector.
+
 ### Sharing rules
 
 - **Direct LOS contact** by an operator: immediate team belief update (if operator is not in a jammed zone).
 - **Drone feed**: team belief updates during support phase (if drone is not jammed).
 - **Camera feed**: team belief updates during support phase (if camera is controlled by team).
+- **Noise events**: opposing team gets STALE tracks as described above (noise is not affected by jamming — it's physical, not electronic).
 - **Jammed unit**: tracks from this unit are NOT shared. The unit has the track locally but it does not propagate to team belief until the jam expires.
 
 ---
@@ -413,51 +455,52 @@ When an operator reaches 0 HP:
 
 The policy receives **team belief + per-unit status**. Never truth.
 
-### Observation vector (per activation)
+### Observation format
+
+Belief is **rasterized into grid channels** (W x H each) rather than exposed as variable-length track lists.
+This is easier for conv-style policies and produces cleaner debugging overlays.
+
+#### Grid channels (W x H float maps)
 
 ```
-Global:
-  round_number          int
-  team_id               int
+Static map (constant after load):
+  wall_map              1.0 where WALL, else 0.0
+  cover_map             1.0 where COVER, else 0.0
+  door_map              1.0 on cells adjacent to doors, else 0.0
+
+Dynamic map state:
+  door_state_map        per-door-edge: 0.0 open, 0.5 closed, 1.0 locked (projected onto adjacent cells)
+  light_map             0.0 where lights are on, 1.0 where cut (per-room)
+  jam_map               1.0 where jammed, else 0.0
+  camera_ownership_map  -1.0 enemy, 0.0 neutral/none, 1.0 friendly (at camera cells)
+
+Friendly state:
+  friendly_position_map 1.0 at each friendly operator position
+  friendly_hp_map       normalized HP (0.0-1.0) at each friendly position
+  friendly_overwatch    1.0 at each friendly operator with active overwatch
+  drone_position_map    1.0 at friendly drone position (0 everywhere if undeployed/destroyed)
+
+Enemy belief (from team belief, NOT truth):
+  enemy_confidence_map  track confidence (0.0-1.0) at estimated position; 0 if no track
+  enemy_uncertainty_map track uncertainty radius (normalized) at estimated position
+  enemy_freshness_map   1.0 for FRESH, 0.5 for STALE, 0.0 if no track
+  explored_map          1.0 for cells this team has observed, else 0.0
+```
+
+#### Scalar features (per activation)
+
+```
+  round_number          int (normalized to [0,1] by max_rounds)
+  rounds_remaining      int (normalized)
   team_support_ap       int
-  rounds_remaining      int
-
-Active unit:
-  position              GridPos
-  hp                    int
-  ap_remaining          int
-  ammo                  int
-  has_shot_this_activ   bool
-  overwatch_active      bool
-  
-Team state:
-  for each friendly operator:
-    position            GridPos
-    hp                  int
-    activated_this_rnd  bool
-    overwatch_active    bool
-  
-  drone:
-    deployed            bool
-    position            GridPos
-    battery             int
-    jammed              bool
-
-Enemy tracks (from team belief):
-  for each track:
-    estimated_position  GridPos
-    confidence          float
-    uncertainty         float
-    status              enum {FRESH, STALE}
-    class_id            int
-    rounds_since_update int
-
-Map knowledge:
-  explored_cells        bitfield
-  known_door_states     per-door enum
-  known_device_owners   per-device team_id
-  active_jams           list of (cell, rounds_remaining)
-  active_light_cuts     list of (room_id, rounds_remaining)
+  active_unit_hp        float (normalized)
+  active_unit_ap        int
+  active_unit_ammo      int (normalized)
+  active_unit_has_shot  bool
+  drone_deployed        bool
+  drone_battery         int (normalized)
+  drone_jammed          bool
+  initiative_this_round bool (does our team have initiative?)
 ```
 
 ### Action space (per activation)
@@ -477,8 +520,8 @@ Operator actions:
   END_TURN              pass remaining AP
 
 Support actions (during support phase):
-  DRONE_MOVE(path)      up to 3 cells
-  DRONE_SCAN            scan from current position
+  DRONE_MOVE(target)    target cell within 3 cells; engine picks shortest legal path
+  DRONE_SCAN            verify: FRESH + class confirm + clear spoofs in drone vision
   CYBER_JAM(cell)       target cell
   CYBER_LOCK(door)      target door
   CYBER_UNLOCK(door)    target door
@@ -567,7 +610,7 @@ These are explicitly deferred. Do not implement, stub, or plan for them.
 - Turrets / automated defenses
 - Multiple floors / elevation
 - Destructible terrain
-- Sound propagation beyond drone noise and breach noise
+- Sound propagation beyond defined noise events (breach, gunshot, drone movement)
 - Fog of war on the grid (map layout is known; only unit/device states are hidden)
 - More than 2 teams
 - Asymmetric AP (all operators have same stats)
