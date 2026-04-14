@@ -55,6 +55,7 @@ struct ViewerState {
     bool show_sensor_ranges = true;
     bool show_waypoint_paths = true;
     bool show_designations = true;
+    bool show_track_status_strip = true;
 };
 
 struct WorldBounds {

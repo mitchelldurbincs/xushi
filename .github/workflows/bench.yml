@@ -1,0 +1,77 @@
+name: Benchmarks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macro-bench:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    env:
+      BENCH_MODE: ${{ github.event_name == 'pull_request' && 'smoke' || 'full' }}
+      WARN_ONLY: ${{ github.event_name == 'pull_request' && 'true' || 'false' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build release binary
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j "$(nproc)"
+
+      - name: Try to download baseline artifact from main
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: bench.yml
+          workflow_conclusion: success
+          branch: main
+          name: bench-baseline
+          path: bench-baseline
+
+      - name: Run benchmark compare
+        run: |
+          args=(
+            --mode "$BENCH_MODE"
+            --binary ./build/xushi
+            --baseline .github/benchmarks/baseline.json
+            --artifact-baseline bench-baseline/baseline.json
+            --outdir bench-artifacts
+          )
+          if [ "$WARN_ONLY" = "true" ]; then
+            args+=(--warn-only)
+          fi
+          python3 .github/scripts/bench_ci.py "${args[@]}"
+
+      - name: Upload benchmark report artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-report-${{ github.run_id }}
+          path: |
+            bench-artifacts/bench-report.md
+            bench-artifacts/bench-current.json
+            bench-artifacts/bench-comparison.json
+
+      - name: Upload benchmark baseline artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-baseline
+          path: bench-artifacts/baseline.json
+
+      - name: Publish benchmark summary
+        if: always()
+        run: cat bench-artifacts/bench-report.md >> "$GITHUB_STEP_SUMMARY"

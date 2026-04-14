@@ -1,0 +1,1769 @@
+{
+  "dt": 1.0,
+  "ticks": 1000,
+  "max_sensor_range": 120.0,
+  "channel": {
+    "base_latency": 3,
+    "per_distance": 0.0,
+    "loss": 0.1
+  },
+  "belief": {
+    "fresh_ticks": 5,
+    "stale_ticks": 10,
+    "uncertainty_growth_per_second": 0.5,
+    "confidence_decay_per_second": 0.05,
+    "negative_evidence_factor": 0.3
+  },
+  "perception": {
+    "miss_rate": 0.05,
+    "false_positive_rate": 0.01,
+    "class_confusion_rate": 0.02
+  },
+  "effect_profiles": [
+    {
+      "name": "standard",
+      "range": 60.0,
+      "requires_los": true,
+      "identity_threshold": 0.6,
+      "corroboration_threshold": 0.5,
+      "cooldown_ticks": 2,
+      "ammo_cost": 1,
+      "roe_flags": [
+        "pid_required"
+      ]
+    }
+  ],
+  "seed": 4409,
+  "entities": [
+    {
+      "id": 0,
+      "type": "drone",
+      "pos": [
+        0.0,
+        0.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 1,
+      "type": "drone",
+      "pos": [
+        7.0,
+        11.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 2,
+      "type": "drone",
+      "pos": [
+        14.0,
+        22.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 3,
+      "type": "drone",
+      "pos": [
+        21.0,
+        33.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 4,
+      "type": "drone",
+      "pos": [
+        28.0,
+        44.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 5,
+      "type": "drone",
+      "pos": [
+        35.0,
+        55.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 6,
+      "type": "drone",
+      "pos": [
+        42.0,
+        66.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 7,
+      "type": "drone",
+      "pos": [
+        49.0,
+        77.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 8,
+      "type": "drone",
+      "pos": [
+        56.0,
+        88.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 9,
+      "type": "drone",
+      "pos": [
+        63.0,
+        9.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 10,
+      "type": "drone",
+      "pos": [
+        70.0,
+        20.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 11,
+      "type": "drone",
+      "pos": [
+        77.0,
+        31.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 12,
+      "type": "drone",
+      "pos": [
+        84.0,
+        42.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 13,
+      "type": "drone",
+      "pos": [
+        91.0,
+        53.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 14,
+      "type": "drone",
+      "pos": [
+        98.0,
+        64.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 15,
+      "type": "drone",
+      "pos": [
+        105.0,
+        75.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 16,
+      "type": "drone",
+      "pos": [
+        112.0,
+        86.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 17,
+      "type": "drone",
+      "pos": [
+        119.0,
+        7.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 18,
+      "type": "drone",
+      "pos": [
+        6.0,
+        18.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 19,
+      "type": "drone",
+      "pos": [
+        13.0,
+        29.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 20,
+      "type": "drone",
+      "pos": [
+        20.0,
+        40.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 21,
+      "type": "drone",
+      "pos": [
+        27.0,
+        51.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 22,
+      "type": "drone",
+      "pos": [
+        34.0,
+        62.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 23,
+      "type": "drone",
+      "pos": [
+        41.0,
+        73.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 24,
+      "type": "drone",
+      "pos": [
+        48.0,
+        84.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 25,
+      "type": "drone",
+      "pos": [
+        55.0,
+        5.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 26,
+      "type": "drone",
+      "pos": [
+        62.0,
+        16.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 27,
+      "type": "drone",
+      "pos": [
+        69.0,
+        27.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 28,
+      "type": "drone",
+      "pos": [
+        76.0,
+        38.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 29,
+      "type": "drone",
+      "pos": [
+        83.0,
+        49.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 30,
+      "type": "drone",
+      "pos": [
+        90.0,
+        60.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 31,
+      "type": "drone",
+      "pos": [
+        97.0,
+        71.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 32,
+      "type": "drone",
+      "pos": [
+        104.0,
+        82.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 33,
+      "type": "drone",
+      "pos": [
+        111.0,
+        3.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 34,
+      "type": "drone",
+      "pos": [
+        118.0,
+        14.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 35,
+      "type": "drone",
+      "pos": [
+        5.0,
+        25.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 36,
+      "type": "drone",
+      "pos": [
+        12.0,
+        36.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 37,
+      "type": "drone",
+      "pos": [
+        19.0,
+        47.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 38,
+      "type": "drone",
+      "pos": [
+        26.0,
+        58.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 39,
+      "type": "drone",
+      "pos": [
+        33.0,
+        69.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 40,
+      "type": "drone",
+      "pos": [
+        40.0,
+        80.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 41,
+      "type": "drone",
+      "pos": [
+        47.0,
+        1.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 42,
+      "type": "drone",
+      "pos": [
+        54.0,
+        12.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 43,
+      "type": "drone",
+      "pos": [
+        61.0,
+        23.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 44,
+      "type": "drone",
+      "pos": [
+        68.0,
+        34.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 45,
+      "type": "drone",
+      "pos": [
+        75.0,
+        45.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 46,
+      "type": "drone",
+      "pos": [
+        82.0,
+        56.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 47,
+      "type": "drone",
+      "pos": [
+        89.0,
+        67.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_sense": true
+    },
+    {
+      "id": 48,
+      "type": "ground",
+      "pos": [
+        10.0,
+        5.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_track": true
+    },
+    {
+      "id": 49,
+      "type": "ground",
+      "pos": [
+        23.0,
+        22.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_track": true
+    },
+    {
+      "id": 50,
+      "type": "ground",
+      "pos": [
+        36.0,
+        39.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_track": true
+    },
+    {
+      "id": 51,
+      "type": "ground",
+      "pos": [
+        49.0,
+        56.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_track": true
+    },
+    {
+      "id": 52,
+      "type": "ground",
+      "pos": [
+        62.0,
+        73.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_track": true
+    },
+    {
+      "id": 53,
+      "type": "ground",
+      "pos": [
+        75.0,
+        10.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_track": true
+    },
+    {
+      "id": 54,
+      "type": "ground",
+      "pos": [
+        88.0,
+        27.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_track": true
+    },
+    {
+      "id": 55,
+      "type": "ground",
+      "pos": [
+        101.0,
+        44.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_track": true
+    },
+    {
+      "id": 56,
+      "type": "ground",
+      "pos": [
+        14.0,
+        61.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_track": true
+    },
+    {
+      "id": 57,
+      "type": "ground",
+      "pos": [
+        27.0,
+        78.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_track": true
+    },
+    {
+      "id": 58,
+      "type": "ground",
+      "pos": [
+        40.0,
+        15.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_track": true
+    },
+    {
+      "id": 59,
+      "type": "ground",
+      "pos": [
+        53.0,
+        32.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_track": true
+    },
+    {
+      "id": 60,
+      "type": "ground",
+      "pos": [
+        66.0,
+        49.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_track": true
+    },
+    {
+      "id": 61,
+      "type": "ground",
+      "pos": [
+        79.0,
+        66.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_track": true
+    },
+    {
+      "id": 62,
+      "type": "ground",
+      "pos": [
+        92.0,
+        83.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_track": true
+    },
+    {
+      "id": 63,
+      "type": "ground",
+      "pos": [
+        105.0,
+        20.0
+      ],
+      "vel": [
+        0.0,
+        0.0
+      ],
+      "can_track": true
+    },
+    {
+      "id": 64,
+      "type": "target",
+      "pos": [
+        5.0,
+        8.0
+      ],
+      "vel": [
+        -0.16,
+        -0.12
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 65,
+      "type": "target",
+      "pos": [
+        24.0,
+        31.0
+      ],
+      "vel": [
+        -0.08,
+        0.0
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 66,
+      "type": "target",
+      "pos": [
+        43.0,
+        54.0
+      ],
+      "vel": [
+        0.0,
+        0.12
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 67,
+      "type": "target",
+      "pos": [
+        62.0,
+        77.0
+      ],
+      "vel": [
+        0.08,
+        -0.06
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 68,
+      "type": "target",
+      "pos": [
+        81.0,
+        16.0
+      ],
+      "vel": [
+        0.16,
+        0.06
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 69,
+      "type": "target",
+      "pos": [
+        100.0,
+        39.0
+      ],
+      "vel": [
+        -0.16,
+        -0.12
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 70,
+      "type": "target",
+      "pos": [
+        9.0,
+        62.0
+      ],
+      "vel": [
+        -0.08,
+        0.0
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 71,
+      "type": "target",
+      "pos": [
+        28.0,
+        85.0
+      ],
+      "vel": [
+        0.0,
+        0.12
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 72,
+      "type": "target",
+      "pos": [
+        47.0,
+        24.0
+      ],
+      "vel": [
+        0.08,
+        -0.06
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 73,
+      "type": "target",
+      "pos": [
+        66.0,
+        47.0
+      ],
+      "vel": [
+        0.16,
+        0.06
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 74,
+      "type": "target",
+      "pos": [
+        85.0,
+        70.0
+      ],
+      "vel": [
+        -0.16,
+        -0.12
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 75,
+      "type": "target",
+      "pos": [
+        104.0,
+        9.0
+      ],
+      "vel": [
+        -0.08,
+        0.0
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 76,
+      "type": "target",
+      "pos": [
+        13.0,
+        32.0
+      ],
+      "vel": [
+        0.0,
+        0.12
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 77,
+      "type": "target",
+      "pos": [
+        32.0,
+        55.0
+      ],
+      "vel": [
+        0.08,
+        -0.06
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 78,
+      "type": "target",
+      "pos": [
+        51.0,
+        78.0
+      ],
+      "vel": [
+        0.16,
+        0.06
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 79,
+      "type": "target",
+      "pos": [
+        70.0,
+        17.0
+      ],
+      "vel": [
+        -0.16,
+        -0.12
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 80,
+      "type": "target",
+      "pos": [
+        89.0,
+        40.0
+      ],
+      "vel": [
+        -0.08,
+        0.0
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 81,
+      "type": "target",
+      "pos": [
+        108.0,
+        63.0
+      ],
+      "vel": [
+        0.0,
+        0.12
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 82,
+      "type": "target",
+      "pos": [
+        17.0,
+        86.0
+      ],
+      "vel": [
+        0.08,
+        -0.06
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 83,
+      "type": "target",
+      "pos": [
+        36.0,
+        25.0
+      ],
+      "vel": [
+        0.16,
+        0.06
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 84,
+      "type": "target",
+      "pos": [
+        55.0,
+        48.0
+      ],
+      "vel": [
+        -0.16,
+        -0.12
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 85,
+      "type": "target",
+      "pos": [
+        74.0,
+        71.0
+      ],
+      "vel": [
+        -0.08,
+        0.0
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 86,
+      "type": "target",
+      "pos": [
+        93.0,
+        10.0
+      ],
+      "vel": [
+        0.0,
+        0.12
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 87,
+      "type": "target",
+      "pos": [
+        112.0,
+        33.0
+      ],
+      "vel": [
+        0.08,
+        -0.06
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 88,
+      "type": "target",
+      "pos": [
+        21.0,
+        56.0
+      ],
+      "vel": [
+        0.16,
+        0.06
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 89,
+      "type": "target",
+      "pos": [
+        40.0,
+        79.0
+      ],
+      "vel": [
+        -0.16,
+        -0.12
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 90,
+      "type": "target",
+      "pos": [
+        59.0,
+        18.0
+      ],
+      "vel": [
+        -0.08,
+        0.0
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 91,
+      "type": "target",
+      "pos": [
+        78.0,
+        41.0
+      ],
+      "vel": [
+        0.0,
+        0.12
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 92,
+      "type": "target",
+      "pos": [
+        97.0,
+        64.0
+      ],
+      "vel": [
+        0.08,
+        -0.06
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 93,
+      "type": "target",
+      "pos": [
+        6.0,
+        87.0
+      ],
+      "vel": [
+        0.16,
+        0.06
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 94,
+      "type": "target",
+      "pos": [
+        25.0,
+        26.0
+      ],
+      "vel": [
+        -0.16,
+        -0.12
+      ],
+      "is_observable": true
+    },
+    {
+      "id": 95,
+      "type": "target",
+      "pos": [
+        44.0,
+        49.0
+      ],
+      "vel": [
+        -0.08,
+        0.0
+      ],
+      "is_observable": true
+    }
+  ],
+  "obstacles": [
+    {
+      "min": [
+        0,
+        0
+      ],
+      "max": [
+        4,
+        4
+      ]
+    },
+    {
+      "min": [
+        9,
+        7
+      ],
+      "max": [
+        14,
+        14
+      ]
+    },
+    {
+      "min": [
+        18,
+        14
+      ],
+      "max": [
+        24,
+        20
+      ]
+    },
+    {
+      "min": [
+        27,
+        21
+      ],
+      "max": [
+        34,
+        26
+      ]
+    },
+    {
+      "min": [
+        36,
+        28
+      ],
+      "max": [
+        40,
+        32
+      ]
+    },
+    {
+      "min": [
+        45,
+        35
+      ],
+      "max": [
+        50,
+        42
+      ]
+    },
+    {
+      "min": [
+        54,
+        42
+      ],
+      "max": [
+        60,
+        48
+      ]
+    },
+    {
+      "min": [
+        63,
+        49
+      ],
+      "max": [
+        70,
+        54
+      ]
+    },
+    {
+      "min": [
+        72,
+        56
+      ],
+      "max": [
+        76,
+        60
+      ]
+    },
+    {
+      "min": [
+        81,
+        63
+      ],
+      "max": [
+        86,
+        70
+      ]
+    },
+    {
+      "min": [
+        90,
+        70
+      ],
+      "max": [
+        96,
+        76
+      ]
+    },
+    {
+      "min": [
+        99,
+        77
+      ],
+      "max": [
+        106,
+        82
+      ]
+    },
+    {
+      "min": [
+        0,
+        6
+      ],
+      "max": [
+        4,
+        10
+      ]
+    },
+    {
+      "min": [
+        9,
+        13
+      ],
+      "max": [
+        14,
+        20
+      ]
+    },
+    {
+      "min": [
+        18,
+        20
+      ],
+      "max": [
+        24,
+        26
+      ]
+    },
+    {
+      "min": [
+        27,
+        27
+      ],
+      "max": [
+        34,
+        32
+      ]
+    },
+    {
+      "min": [
+        36,
+        34
+      ],
+      "max": [
+        40,
+        38
+      ]
+    },
+    {
+      "min": [
+        45,
+        41
+      ],
+      "max": [
+        50,
+        48
+      ]
+    },
+    {
+      "min": [
+        54,
+        48
+      ],
+      "max": [
+        60,
+        54
+      ]
+    },
+    {
+      "min": [
+        63,
+        55
+      ],
+      "max": [
+        70,
+        60
+      ]
+    },
+    {
+      "min": [
+        72,
+        62
+      ],
+      "max": [
+        76,
+        66
+      ]
+    },
+    {
+      "min": [
+        81,
+        69
+      ],
+      "max": [
+        86,
+        76
+      ]
+    },
+    {
+      "min": [
+        90,
+        76
+      ],
+      "max": [
+        96,
+        82
+      ]
+    },
+    {
+      "min": [
+        99,
+        5
+      ],
+      "max": [
+        106,
+        10
+      ]
+    },
+    {
+      "min": [
+        0,
+        12
+      ],
+      "max": [
+        4,
+        16
+      ]
+    },
+    {
+      "min": [
+        9,
+        19
+      ],
+      "max": [
+        14,
+        26
+      ]
+    },
+    {
+      "min": [
+        18,
+        26
+      ],
+      "max": [
+        24,
+        32
+      ]
+    },
+    {
+      "min": [
+        27,
+        33
+      ],
+      "max": [
+        34,
+        38
+      ]
+    },
+    {
+      "min": [
+        36,
+        40
+      ],
+      "max": [
+        40,
+        44
+      ]
+    },
+    {
+      "min": [
+        45,
+        47
+      ],
+      "max": [
+        50,
+        54
+      ]
+    },
+    {
+      "min": [
+        54,
+        54
+      ],
+      "max": [
+        60,
+        60
+      ]
+    },
+    {
+      "min": [
+        63,
+        61
+      ],
+      "max": [
+        70,
+        66
+      ]
+    },
+    {
+      "min": [
+        72,
+        68
+      ],
+      "max": [
+        76,
+        72
+      ]
+    },
+    {
+      "min": [
+        81,
+        75
+      ],
+      "max": [
+        86,
+        82
+      ]
+    },
+    {
+      "min": [
+        90,
+        4
+      ],
+      "max": [
+        96,
+        10
+      ]
+    },
+    {
+      "min": [
+        99,
+        11
+      ],
+      "max": [
+        106,
+        16
+      ]
+    },
+    {
+      "min": [
+        0,
+        18
+      ],
+      "max": [
+        4,
+        22
+      ]
+    },
+    {
+      "min": [
+        9,
+        25
+      ],
+      "max": [
+        14,
+        32
+      ]
+    },
+    {
+      "min": [
+        18,
+        32
+      ],
+      "max": [
+        24,
+        38
+      ]
+    },
+    {
+      "min": [
+        27,
+        39
+      ],
+      "max": [
+        34,
+        44
+      ]
+    },
+    {
+      "min": [
+        36,
+        46
+      ],
+      "max": [
+        40,
+        50
+      ]
+    },
+    {
+      "min": [
+        45,
+        53
+      ],
+      "max": [
+        50,
+        60
+      ]
+    },
+    {
+      "min": [
+        54,
+        60
+      ],
+      "max": [
+        60,
+        66
+      ]
+    },
+    {
+      "min": [
+        63,
+        67
+      ],
+      "max": [
+        70,
+        72
+      ]
+    },
+    {
+      "min": [
+        72,
+        74
+      ],
+      "max": [
+        76,
+        78
+      ]
+    },
+    {
+      "min": [
+        81,
+        3
+      ],
+      "max": [
+        86,
+        10
+      ]
+    },
+    {
+      "min": [
+        90,
+        10
+      ],
+      "max": [
+        96,
+        16
+      ]
+    },
+    {
+      "min": [
+        99,
+        17
+      ],
+      "max": [
+        106,
+        22
+      ]
+    }
+  ]
+}

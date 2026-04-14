@@ -97,8 +97,7 @@ static void test_independent_receivers(TestContext& ctx) {
 }
 
 int main() {
-    TestContext ctx;
-    std::printf("Running comm tests...\n");
+    return run_test_suite("comm", [](TestContext& ctx) {
     test_base_latency_delivery(ctx);
     test_distance_latency(ctx);
     test_no_loss(ctx);
@@ -106,5 +105,5 @@ int main() {
     test_determinism(ctx);
     test_multiple_deliveries_same_tick(ctx);
     test_independent_receivers(ctx);
-    return ctx.report_and_exit_code();
+    });
 }
