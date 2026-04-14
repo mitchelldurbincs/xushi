@@ -68,6 +68,39 @@ ctest --test-dir build --output-on-failure
 | `mixed_era.json` | Mixed-capability entities on same unit |
 | `patrol_policy.json` | Policy-driven patrol routes |
 | `benchmark_dense.json` | 1000-tick stress test with 5 targets and 8 obstacles |
+| `bench/small.json` | Low-scale benchmark tier (12 entities, 6 obstacles, low sensing density) |
+| `bench/medium.json` | Medium benchmark tier (24 entities, 12 obstacles, moderate sensing density) |
+| `bench/large.json` | Large benchmark tier (48 entities, 24 obstacles, high sensing density) |
+| `bench/xlarge.json` | Extra-large benchmark tier (96 entities, 48 obstacles, very high sensing density/message load) |
+
+### Benchmark Tiering Notes
+
+The `scenarios/bench/*.json` files are designed for scale profiling with all non-scale knobs fixed:
+
+- `dt`, `ticks`, `max_sensor_range`
+- `channel`, `belief`, and `perception` configuration
+- engagement `effect_profiles`
+
+Only these dimensions change per tier:
+
+- total entity count
+- obstacle count
+- sensing density (fraction of entities with `can_sense`)
+
+Each tier uses a deterministic fixed seed:
+
+- `small`: `1103`
+- `medium`: `2203`
+- `large`: `3301`
+- `xlarge`: `4409`
+
+For variance tracking, run the same tier with an additional fixed seed set (for example: `9001`, `9013`, `9029`) by cloning a tier file and changing only `seed`.
+
+Expected growth trends when running `--bench`:
+
+- **Near-linear signs**: movement updates, obstacle iteration, and baseline bookkeeping as entity/obstacle counts scale.
+- **Superlinear signs**: sensing + comm integration can trend superlinear as sensor density rises (more sensor-target pairs and more observation message fan-out to trackers).
+- **Most pronounced jump**: `xlarge` should show the strongest message-pressure effects due to both high entity count and high sensing density.
 
 ### Configuration Reference
 
