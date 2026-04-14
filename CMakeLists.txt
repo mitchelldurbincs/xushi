@@ -93,15 +93,11 @@ add_xushi_test(replay tests/test_replay.cpp)
 
 add_xushi_test(movement tests/test_movement.cpp)
 
-add_xushi_test(determinism tests/test_determinism.cpp)
-set_tests_properties(determinism PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-
-add_xushi_test(golden tests/test_golden.cpp)
+add_xushi_test(contract tests/test_contract.cpp)
+set_tests_properties(contract PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 add_xushi_test(parity tests/test_parity.cpp)
 set_tests_properties(parity PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-
-add_xushi_test(policy tests/test_policy.cpp)
 
 add_xushi_test(action tests/test_action.cpp)
 

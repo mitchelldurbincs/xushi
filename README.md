@@ -12,7 +12,7 @@ Multi-agent tactical simulation engine — sensor detection, belief tracking, lo
 - **Belief tracking** — track lifecycle (FRESH → STALE → EXPIRED), confidence decay, uncertainty growth, negative evidence, corroboration from multiple sources
 - **Lossy communications** — message latency (base + distance-scaled), probabilistic message loss
 - **Engagement system** — 14 tactical gates evaluated before any shot (range, LOS, staleness, uncertainty, identity confidence, corroboration, ammo, cooldown, ROE, and more)
-- **Movement** — constant velocity, waypoint navigation (loop/stop/branch modes), patrol policies
+- **Movement** — deterministic constant-velocity updates inside a fixed phase order
 - **Task system** — automatic VERIFY task assignment for degraded tracks
 - **Deterministic replay** — NDJSON event log, byte-for-byte identical across runs with same seed
 - **Replay viewer** — optional raylib-based interactive visualization
@@ -58,49 +58,15 @@ ctest --test-dir build --output-on-failure
 |------|-------------|
 | `default.json` | Basic 3-entity setup with obstacle and engagement profile |
 | `multi_agent.json` | Multiple sensors and trackers |
-| `dual_patrol.json` | Two-sensor patrol coverage |
-| `waypoint_patrol.json` | Target following a waypoint loop |
-| `branch_waypoint.json` | Stochastic waypoint branching |
+| `mvp_contract_2v2.json` | Contract baseline: 2v2 operators, one drone/side, cyber node, door/light control |
+| `mvp_comm_constraints.json` | Communication-constrained belief publication baseline |
+| `mvp_reaction_ap.json` | Action-point-equivalent spending and reaction gate baseline |
 | `los_blocked.json` | Obstacles blocking sensor LOS |
 | `noisy_perception.json` | Miss rate and false positives enabled |
 | `distance_comms.json` | Distance-scaled communication latency |
 | `task_verify.json` | VERIFY task assignment |
 | `mixed_era.json` | Mixed-capability entities on same unit |
-| `patrol_policy.json` | Policy-driven patrol routes |
-| `benchmark_dense.json` | 1000-tick stress test with 5 targets and 8 obstacles |
-| `bench/small.json` | Low-scale benchmark tier (12 entities, 6 obstacles, low sensing density) |
-| `bench/medium.json` | Medium benchmark tier (24 entities, 12 obstacles, moderate sensing density) |
-| `bench/large.json` | Large benchmark tier (48 entities, 24 obstacles, high sensing density) |
-| `bench/xlarge.json` | Extra-large benchmark tier (96 entities, 48 obstacles, very high sensing density/message load) |
-
-### Benchmark Tiering Notes
-
-The `scenarios/bench/*.json` files are designed for scale profiling with all non-scale knobs fixed:
-
-- `dt`, `ticks`, `max_sensor_range`
-- `channel`, `belief`, and `perception` configuration
-- engagement `effect_profiles`
-
-Only these dimensions change per tier:
-
-- total entity count
-- obstacle count
-- sensing density (fraction of entities with `can_sense`)
-
-Each tier uses a deterministic fixed seed:
-
-- `small`: `1103`
-- `medium`: `2203`
-- `large`: `3301`
-- `xlarge`: `4409`
-
-For variance tracking, run the same tier with an additional fixed seed set (for example: `9001`, `9013`, `9029`) by cloning a tier file and changing only `seed`.
-
-Expected growth trends when running `--bench`:
-
-- **Near-linear signs**: movement updates, obstacle iteration, and baseline bookkeeping as entity/obstacle counts scale.
-- **Superlinear signs**: sensing + comm integration can trend superlinear as sensor density rises (more sensor-target pairs and more observation message fan-out to trackers).
-- **Most pronounced jump**: `xlarge` should show the strongest message-pressure effects due to both high entity count and high sensing density.
+> Legacy waypoint/patrol and dense sensing benchmark baselines are deprecated from `scenarios/` in favor of deterministic contract-focused MVP baselines.
 
 ### Configuration Reference
 
@@ -118,7 +84,7 @@ All scenarios are JSON files. Top-level fields:
 | `belief` | object | see below | Track lifecycle config |
 | `perception` | object | see below | Sensor noise config |
 | `effect_profiles` | array | `[]` | Weapons/engagement profiles |
-| `policy` | object | none | Movement policy config |
+| `game_mode` | object | none | Optional game mode config |
 
 A valid scenario requires at least one entity with `can_sense`, one with `can_track`, and one with `is_observable`.
 
@@ -140,10 +106,10 @@ A valid scenario requires at least one entity with `can_sense`, one with `can_tr
 | `ammo` | int | `0` | Ammunition remaining |
 | `cooldown_ticks_remaining` | int | `0` | Ticks until next engagement allowed |
 | `allowed_effect_profile_indices` | int[] | `[]` | Indices into `effect_profiles` |
-| `waypoints` | [[x,y], ...] | none | Waypoint path (requires `speed`) |
-| `speed` | float | — | Movement speed (required with waypoints) |
-| `waypoint_mode` | string | `"stop"` | `"stop"` or `"loop"` |
-| `branch_points` | object | none | `{"waypoint_idx": [successor_indices]}` |
+| `waypoints` | [[x,y], ...] | none | *(Deprecated for contract baselines)* waypoint path |
+| `speed` | float | — | *(Deprecated for contract baselines)* waypoint speed |
+| `waypoint_mode` | string | `"stop"` | *(Deprecated for contract baselines)* `"stop"` or `"loop"` |
+| `branch_points` | object | none | *(Deprecated for contract baselines)* branching waypoint successors |
 
 ### Channel Config
 
@@ -187,20 +153,9 @@ A valid scenario requires at least one entity with `can_sense`, one with `can_tr
 | `ammo_cost` | int | `0` | Ammo consumed per engagement |
 | `roe_flags` | string[] | `[]` | Rules of engagement constraint flags |
 
-### Policy Config
+### Contract-Only Schema Note
 
-Currently supports the `patrol` type:
-
-```json
-"policy": {
-  "type": "patrol",
-  "routes": {
-    "0": [[10, 10], [90, 10], [90, 50], [10, 50]]
-  }
-}
-```
-
-Routes map entity ID (as string key) to a list of patrol waypoints.
+Current MVP scenario baselines should be authored against the contract phases and core fields (`entities`, `channel`, `belief`, `perception`, `effect_profiles`) without policy-specific route overlays.
 
 ## Architecture
 
@@ -209,7 +164,7 @@ Routes map entity ID (as string key) to a list of patrol waypoints.
 Each simulation tick executes these phases in order:
 
 1. **Cooldowns** — decrement engagement cooldown timers
-2. **Movement** — task override > policy override > waypoint/velocity
+2. **Movement** — deterministic movement update
 3. **Sensing** — LOS + range checks, generate noisy observations, send messages to trackers, apply negative evidence, generate false positives
 4. **Communication** — deliver messages whose latency has elapsed
 5. **Belief** — integrate observations into tracks, decay confidence, grow uncertainty, expire old tracks
@@ -245,9 +200,8 @@ src/
   belief.{h,cpp}        track management, decay, negative evidence
   comm.{h,cpp}          message queuing, latency, loss
   engagement.{h,cpp}    tactical gate evaluation
-  movement.h            waypoint navigation, constant velocity
-  patrol_policy.h       patrol policy implementation
-  policy.h              policy interface
+  movement.h            movement integration
+  policy.h              policy interface (legacy/deprecated for contract baselines)
   action.h              action types, gate failure bitmask
   task.h                task definitions (VERIFY)
   map.{h,cpp}           obstacle map, LOS raycasting
@@ -309,7 +263,7 @@ build\Release\xushi_viewer.exe scenarios\default.replay
 | Scroll wheel | Zoom in / out |
 | Right-click drag | Pan camera |
 | R | Toggle sensor range overlay |
-| W | Toggle waypoint path overlay |
+| W | Toggle waypoint path overlay (legacy scenarios) |
 | D | Toggle designation overlay |
 | T | Toggle per-track status strip |
 | Timeline bar | Click / drag to scrub |
@@ -352,7 +306,7 @@ The viewer overlays are intended to separate **ground truth**, **sensor evidence
 
 ## Testing
 
-17 test files using a custom test harness (no external framework), all run via CTest.
+Contract-focused test files using a custom test harness (no external framework), all run via CTest.
 
 ```bash
 ctest --test-dir build --output-on-failure
@@ -369,11 +323,9 @@ ctest --test-dir build --output-on-failure
 | `test_scenario` | Scenario loading and validation |
 | `test_replay` | NDJSON replay write/read round-trip |
 | `test_replay_path_resolution` | Replay file path derivation |
-| `test_movement` | Waypoint navigation, loop/stop, branching |
-| `test_determinism` | Same seed → identical world hashes |
-| `test_golden` | Golden-file comparison for known outputs |
+| `test_movement` | Movement primitives and deterministic updates |
+| `test_contract` | Round phase order, AP-equivalent spending, reaction gates, comm-constrained belief publication, replay checksums |
 | `test_parity` | Simulation parity checks |
-| `test_policy` | Patrol policy waypoint cycling |
 | `test_action` | Action request adjudication, designation lifecycle |
 | `test_engagement` | Engagement gate evaluation |
 

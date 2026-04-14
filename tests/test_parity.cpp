@@ -62,8 +62,8 @@ static void test_parity_default(TestContext& ctx) {
           "parity: default tasks completed");
 }
 
-static void test_parity_benchmark_dense(TestContext& ctx) {
-    Scenario scn = load_scenario("scenarios/benchmark_dense.json");
+static void test_parity_mvp_contract(TestContext& ctx) {
+    Scenario scn = load_scenario("scenarios/mvp_contract_2v2.json");
 
     SimResult headless = run_scenario_headless(scn);
 
@@ -73,7 +73,7 @@ static void test_parity_benchmark_dense(TestContext& ctx) {
     for (int tick = 0; tick < scn.ticks; ++tick)
         engine.step(tick, hooks);
 
-    ctx.check(headless.world_hashes.size() == hooks.world_hashes.size(), "parity: dense hash count");
+    ctx.check(headless.world_hashes.size() == hooks.world_hashes.size(), "parity: mvp hash count");
     bool all_match = true;
     for (size_t i = 0; i < headless.world_hashes.size(); ++i) {
         if (headless.world_hashes[i] != hooks.world_hashes[i]) {
@@ -81,11 +81,11 @@ static void test_parity_benchmark_dense(TestContext& ctx) {
             break;
         }
     }
-    ctx.check(all_match, "parity: dense world hashes match");
+    ctx.check(all_match, "parity: mvp world hashes match");
     ctx.check(headless.world_hashes == collect_hashes_via_free_fn(scn),
-          "parity: dense free hash function matches replay snapshots");
+          "parity: mvp free hash function matches replay snapshots");
     ctx.check(headless.stats.detections_generated == engine.stats().detections_generated,
-          "parity: dense detection count");
+          "parity: mvp detection count");
 }
 
 static void test_parity_noisy(TestContext& ctx) {
@@ -136,8 +136,8 @@ static void test_parity_task_verify(TestContext& ctx) {
           "parity: task completions match");
 }
 
-static void test_parity_waypoint(TestContext& ctx) {
-    Scenario scn = load_scenario("scenarios/waypoint_patrol.json");
+static void test_parity_reaction_ap(TestContext& ctx) {
+    Scenario scn = load_scenario("scenarios/mvp_reaction_ap.json");
 
     SimResult headless = run_scenario_headless(scn);
 
@@ -147,7 +147,7 @@ static void test_parity_waypoint(TestContext& ctx) {
     for (int tick = 0; tick < scn.ticks; ++tick)
         engine.step(tick, hooks);
 
-    ctx.check(headless.world_hashes.size() == hooks.world_hashes.size(), "parity: waypoint hash count");
+    ctx.check(headless.world_hashes.size() == hooks.world_hashes.size(), "parity: reaction hash count");
     bool all_match = true;
     for (size_t i = 0; i < headless.world_hashes.size(); ++i) {
         if (headless.world_hashes[i] != hooks.world_hashes[i]) {
@@ -155,7 +155,7 @@ static void test_parity_waypoint(TestContext& ctx) {
             break;
         }
     }
-    ctx.check(all_match, "parity: waypoint world hashes match");
+    ctx.check(all_match, "parity: reaction world hashes match");
 }
 
 static void test_parity_multi_agent(TestContext& ctx) {
@@ -187,10 +187,10 @@ static void test_parity_multi_agent(TestContext& ctx) {
 int main() {
     return run_test_suite("parity", [](TestContext& ctx) {
     test_parity_default(ctx);
-    test_parity_benchmark_dense(ctx);
+    test_parity_mvp_contract(ctx);
     test_parity_noisy(ctx);
     test_parity_task_verify(ctx);
-    test_parity_waypoint(ctx);
+    test_parity_reaction_ap(ctx);
     test_parity_multi_agent(ctx);
     });
 }
