@@ -386,8 +386,7 @@ static void test_invalid_effect_profile_hit_probability(TestContext& ctx) {
 }
 
 int main() {
-    TestContext ctx;
-    std::printf("Running scenario tests...\n");
+    return run_test_suite("scenario", [](TestContext& ctx) {
     test_load_default(ctx);
     test_load_los_blocked(ctx);
     test_missing_file(ctx);
@@ -402,5 +401,5 @@ int main() {
     test_invalid_validations(ctx);
     test_invalid_effect_profile_reference(ctx);
     test_invalid_effect_profile_hit_probability(ctx);
-    return ctx.report_and_exit_code();
+    });
 }

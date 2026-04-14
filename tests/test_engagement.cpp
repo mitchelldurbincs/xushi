@@ -575,8 +575,7 @@ static void test_attacker_combat_causes_death(TestContext& ctx) {
 }
 
 int main() {
-    TestContext ctx;
-    std::printf("Running engagement tests...\n");
+    return run_test_suite("engagement", [](TestContext& ctx) {
     test_engagement_gates_include_track_and_truth_failures(ctx);
     test_capable_actor_passes_gates(ctx);
     test_same_team_engagement_rejected(ctx);
@@ -585,13 +584,11 @@ int main() {
     test_out_of_ammo_blocks_engagement(ctx);
     test_friendly_risk_only_flags_same_team(ctx);
     test_engagement_rules_override_friendly_risk_radius(ctx);
-
     // Engagement stop (collision) tests
     test_engagement_stop_within_range(ctx);
     test_engagement_stop_same_team_ignored(ctx);
     test_dead_entity_skips_movement(ctx);
     test_dead_enemy_does_not_block(ctx);
     test_attacker_combat_causes_death(ctx);
-
-    return ctx.report_and_exit_code();
+    });
 }
