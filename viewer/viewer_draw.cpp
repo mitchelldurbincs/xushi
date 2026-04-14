@@ -236,7 +236,6 @@ static void draw_detections(const ViewerState& vs) {
     if (!frame)
         return;
 
-    float dt = vs.scenario.dt;
     int tick = vs.current_tick;
 
     int missing_observer_count = 0;
