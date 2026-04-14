@@ -477,7 +477,8 @@ void SimEngine::rebuild_spatial_bins(float cell_size) {
 
 void SimEngine::for_each_candidate_in_range(const Vec2& center, float range,
                                             const std::function<void(size_t)>& fn) const {
-    if (spatial_bins_.empty() || spatial_cell_size_ <= kEpsilon || !std::isfinite(range)) {
+    // Fallback: empty bins, invalid cell size, non-finite range, or very large range
+    if (spatial_bins_.empty() || spatial_cell_size_ <= kEpsilon || !std::isfinite(range) || range >= kInfDistance / 2) {
         for (size_t i = 0; i < entities_.size(); ++i) fn(i);
         return;
     }
