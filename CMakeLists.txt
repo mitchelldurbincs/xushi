@@ -15,6 +15,7 @@ add_library(xushi_core STATIC
     src/replay.cpp
     src/path_resolve.cpp
     src/stats.cpp
+    src/world_hash.cpp
     src/sim.cpp
     src/sim_engine.cpp
     src/engagement.cpp

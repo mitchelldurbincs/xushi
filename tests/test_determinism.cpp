@@ -1,5 +1,6 @@
 #include "test_helpers.h"
 #include "../src/sim.h"
+#include "../src/sim_engine.h"
 #include "../src/scenario.h"
 
 static void test_same_seed_same_hashes(TestContext& ctx) {
@@ -242,6 +243,20 @@ static void test_patrol_policy_determinism(TestContext& ctx) {
     ctx.check(a.stats.detections_generated > 0, "patrol policy produces detections");
 }
 
+static void test_hash_api_consistency(TestContext& ctx) {
+    Scenario scn = load_scenario("scenarios/noisy_perception.json");
+
+    SimEngine engine;
+    engine.init(scn);
+    TickHooks hooks;
+    for (int tick = 0; tick < scn.ticks; ++tick) {
+        engine.step(tick, hooks);
+        uint64_t engine_hash = engine.compute_world_hash();
+        uint64_t free_hash = compute_world_hash(engine.get_entities(), engine.get_beliefs());
+        ctx.check(engine_hash == free_hash, "hash api consistency per tick");
+    }
+}
+
 int main() {
     return run_test_suite("determinism", [](TestContext& ctx) {
     test_same_seed_same_hashes(ctx);
@@ -256,5 +271,6 @@ int main() {
     test_branch_waypoint_determinism(ctx);
     test_distance_comms_determinism(ctx);
     test_patrol_policy_determinism(ctx);
+    test_hash_api_consistency(ctx);
     });
 }
