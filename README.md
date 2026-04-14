@@ -15,7 +15,7 @@ Multi-agent tactical simulation engine — sensor detection, belief tracking, lo
 - **Movement** — constant velocity, waypoint navigation (loop/stop/branch modes), patrol policies
 - **Task system** — automatic VERIFY task assignment for degraded tracks
 - **Deterministic replay** — NDJSON event log, byte-for-byte identical across runs with same seed
-- **Replay viewer** — optional raylib-based interactive visualization
+- **Headless-first workflows** — deterministic CLI runner plus repeatable batch self-play sweeps
 
 ## Quick Start
 
@@ -43,6 +43,31 @@ build\Release\xushi.exe scenarios\default.json  # Windows
 ```
 
 The simulation writes a `.replay` file alongside the scenario (e.g., `scenarios/default.replay`).
+
+### Headless Runner
+
+Use the main `xushi` binary as the default execution path for CI, tuning, and regression runs:
+
+```bash
+# Single scenario (headless simulation)
+./build/xushi scenarios/default.json
+
+# Deterministic benchmark pass for performance tracking
+./build/xushi --bench scenarios/bench/medium.json
+```
+
+### Batch Self-Play Runner (headless)
+
+Use shell loops to run repeated seeded matches and archive logs/replays for analysis:
+
+```bash
+mkdir -p runs/self_play
+for seed in 9001 9013 9029 9049; do
+  out="runs/self_play/medium_${seed}.json"
+  python -c "import json; s=json.load(open('scenarios/bench/medium.json')); s['seed']=${seed}; json.dump(s, open('${out}','w'), indent=2)"
+  ./build/xushi --bench "${out}" > "runs/self_play/bench_${seed}.log"
+done
+```
 
 ### Run Tests
 
@@ -262,6 +287,7 @@ src/
   path_resolve.{h,cpp}  replay path resolution
 
 viewer/
+  CMakeLists.txt        optional UI subproject (enabled with XUSHI_ENABLE_VIEWER)
   main.cpp              viewer entry point
   viewer.h              state machine, rendering
   viewer_load.cpp       replay file loading
@@ -269,86 +295,28 @@ viewer/
   viewer_draw.cpp       raylib rendering
 ```
 
-## Viewer
+## Optional Viewer Subproject
 
-Optional interactive replay visualizer. Requires [raylib](https://github.com/raysan5/raylib) 5.5.
+The replay viewer remains available, but it is intentionally isolated from the core build so headless simulation has zero UI dependency surface by default.
 
-**Linux / macOS:**
+- Default configure/build: **does not** touch `viewer/` or raylib.
+- To build viewer explicitly: enable `-DXUSHI_ENABLE_VIEWER=ON`.
+
 ```bash
-git clone --depth 1 --branch 5.5 https://github.com/raysan5/raylib.git /tmp/raylib
-cmake -B /tmp/raylib/build -S /tmp/raylib -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=OFF
-cmake --build /tmp/raylib/build -j$(nproc)
-sudo cmake --install /tmp/raylib/build
-
-# Rebuild xushi (CMake auto-detects raylib)
-cmake -B build -DCMAKE_BUILD_TYPE=Release
+# Linux / macOS
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DXUSHI_ENABLE_VIEWER=ON
 cmake --build build -j$(nproc)
 ./build/xushi_viewer scenarios/default.replay
 ```
 
-**Windows (Visual Studio 2022):**
 ```bash
-git clone --depth 1 --branch 5.5 https://github.com/raysan5/raylib.git raylib-5.5
-cmake -B raylib-5.5/build -S raylib-5.5 -G "Visual Studio 17 2022" -A x64 -DBUILD_EXAMPLES=OFF
-cmake --build raylib-5.5/build --config Release
-cmake --install raylib-5.5/build --config Release --prefix raylib-5.5/install
-
-# Rebuild xushi with raylib prefix
-cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH=<path-to>/raylib-5.5/install
+# Windows (Visual Studio 2022)
+cmake -B build -G "Visual Studio 17 2022" -A x64 -DXUSHI_ENABLE_VIEWER=ON
 cmake --build build --config Release
 build\Release\xushi_viewer.exe scenarios\default.replay
 ```
 
-### Controls
-
-| Key | Action |
-|-----|--------|
-| Space | Play / pause |
-| Left / Right | Step backward / forward (when paused) |
-| + / - | Increase / decrease playback speed |
-| Scroll wheel | Zoom in / out |
-| Right-click drag | Pan camera |
-| R | Toggle sensor range overlay |
-| W | Toggle waypoint path overlay |
-| D | Toggle designation overlay |
-| T | Toggle per-track status strip |
-| Timeline bar | Click / drag to scrub |
-
-### Visual Indicators
-
-The viewer overlays are intended to separate **ground truth**, **sensor evidence**, and **belief state quality**:
-
-- **Entity markers**
-  - **Blue circle**: sensor-capable platform (`can_sense`).
-  - **Green square marker**: tracker-capable platform (`can_track`).
-  - **Red circle**: observable target (`is_observable`).
-  - **Purple circle**: multi-capability entity (more than one capability flag).
-
-- **Detection/measurement indicators**
-  - **Green dot**: detection estimate (`detection.est_pos` from replay log).
-  - **Green LOS segment**: observer-to-estimate line for a detection.
-
-- **Belief-track uncertainty bubble**
-  - Bubble center and cross indicate `track_update.pos`.
-  - Bubble radius reflects `track_update.unc` (uncertainty).
-  - Bubble alpha scales with `track_update.conf` (confidence).
-  - **FRESH** tracks use brighter yellow/orange styling; degraded states darken.
-
-- **Per-track status strip (`T`)**
-  - One row per current `track_update`.
-  - `O#/T#`: track owner and target IDs.
-  - `S:#`: inferred source sensor ID (latest matching `detection.observer` for target).
-  - `A:#t`: message age in ticks since last update for that owner/target.
-  - `L:#t`: inferred communication latency in ticks from `msg_sent.delivery_tick - msg_sent.tick`.
-  - `C` / `U`: confidence and uncertainty from track state.
-  - Right-side status text + color strip:
-    - **Green** = `FRESH`
-    - **Amber** = `STALE`
-    - **Red** = `EXPIRED`
-  - Cause tag (best-effort replay inference):
-    - **`dropped comm`** when recent `msg_dropped` events affected the owner.
-    - **`LOS blocked`** when a track is expired without recent comm drop evidence.
-    - **`negative evidence`** when the track is stale without stronger comm/LOS signal.
+If raylib is not installed and `XUSHI_ENABLE_VIEWER=ON` is set, CMake fails fast with a clear error.
 
 ## Testing
 
