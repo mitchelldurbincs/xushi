@@ -21,3 +21,12 @@ struct TestContext {
         return (tests_passed == tests_run) ? 0 : 1;
     }
 };
+
+template <typename RegisterTestsFn>
+int run_test_suite(const char* suite_name, RegisterTestsFn register_tests) {
+    std::printf("Running %s tests...\n", suite_name);
+    TestContext ctx;
+    register_tests(ctx);
+    return ctx.report_and_exit_code();
+}
+

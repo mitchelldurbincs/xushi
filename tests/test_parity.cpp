@@ -11,6 +11,19 @@ struct HashCollectHooks : TickHooks {
     }
 };
 
+static std::vector<uint64_t> collect_hashes_via_free_fn(const Scenario& scn) {
+    SimEngine engine;
+    engine.init(scn);
+    TickHooks hooks;
+    std::vector<uint64_t> hashes;
+    for (int tick = 0; tick < scn.ticks; ++tick) {
+        engine.step(tick, hooks);
+        if (tick % 10 == 0)
+            hashes.push_back(compute_world_hash(engine.get_entities(), engine.get_beliefs()));
+    }
+    return hashes;
+}
+
 static void test_parity_default(TestContext& ctx) {
     Scenario scn = load_scenario("scenarios/default.json");
 
@@ -35,6 +48,8 @@ static void test_parity_default(TestContext& ctx) {
         }
     }
     ctx.check(all_match, "parity: default world hashes match");
+    ctx.check(headless.world_hashes == collect_hashes_via_free_fn(scn),
+          "parity: default free hash function matches replay snapshots");
     ctx.check(headless.stats.detections_generated == engine.stats().detections_generated,
           "parity: default detection count");
     ctx.check(headless.stats.messages_sent == engine.stats().messages_sent,
@@ -67,6 +82,8 @@ static void test_parity_benchmark_dense(TestContext& ctx) {
         }
     }
     ctx.check(all_match, "parity: dense world hashes match");
+    ctx.check(headless.world_hashes == collect_hashes_via_free_fn(scn),
+          "parity: dense free hash function matches replay snapshots");
     ctx.check(headless.stats.detections_generated == engine.stats().detections_generated,
           "parity: dense detection count");
 }
@@ -168,13 +185,12 @@ static void test_parity_multi_agent(TestContext& ctx) {
 }
 
 int main() {
-    TestContext ctx;
-    std::printf("Running parity tests...\n");
+    return run_test_suite("parity", [](TestContext& ctx) {
     test_parity_default(ctx);
     test_parity_benchmark_dense(ctx);
     test_parity_noisy(ctx);
     test_parity_task_verify(ctx);
     test_parity_waypoint(ctx);
     test_parity_multi_agent(ctx);
-    return ctx.report_and_exit_code();
+    });
 }

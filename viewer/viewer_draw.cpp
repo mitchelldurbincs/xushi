@@ -49,6 +49,12 @@ static bool try_get_entity_world_pos(const ViewerState& vs, EntityId id, int tic
     return true;
 }
 
+static const TickFrame* current_frame_or_null(const ViewerState& vs) {
+    if (vs.current_tick < 0 || vs.current_tick >= static_cast<int>(vs.frames.size()))
+        return nullptr;
+    return &vs.frames[vs.current_tick];
+}
+
 // --- Grid ---
 
 static void draw_grid(const ViewerState& vs) {
@@ -226,16 +232,16 @@ static void draw_entities(const ViewerState& vs) {
 // --- Detections ---
 
 static void draw_detections(const ViewerState& vs) {
-    if (vs.current_tick < 0 || vs.current_tick >= static_cast<int>(vs.frames.size()))
+    const TickFrame* frame = current_frame_or_null(vs);
+    if (!frame)
         return;
 
-    const auto& frame = vs.frames[vs.current_tick];
-
+    float dt = vs.scenario.dt;
     int tick = vs.current_tick;
 
     int missing_observer_count = 0;
 
-    for (const auto& det : frame.detections) {
+    for (const auto& det : frame->detections) {
         float ex = 0.0f, ey = 0.0f;
         if (!try_get_xy_array(det, "est_pos", ex, ey)) continue;
         Vector2 est_screen = world_to_screen(ex, ey, vs);
@@ -270,12 +276,11 @@ static void draw_detections(const ViewerState& vs) {
 // --- Tracks ---
 
 static void draw_tracks(const ViewerState& vs) {
-    if (vs.current_tick < 0 || vs.current_tick >= static_cast<int>(vs.frames.size()))
+    const TickFrame* frame = current_frame_or_null(vs);
+    if (!frame)
         return;
 
-    const auto& frame = vs.frames[vs.current_tick];
-
-    for (const auto& trk : frame.track_updates) {
+    for (const auto& trk : frame->track_updates) {
         float px = 0.0f, py = 0.0f;
         if (!try_get_xy_array(trk, "pos", px, py)) continue;
         if (!trk.has("unc") || trk["unc"].type != JsonValue::NUMBER) continue;
@@ -320,6 +325,150 @@ static void draw_tracks(const ViewerState& vs) {
     }
 }
 
+struct TrackStatusStripInfo {
+    EntityId owner = 0;
+    EntityId target = 0;
+    int source_sensor = -1;
+    int last_update_tick = -1;
+    int latency_ticks = -1;
+    float confidence = 0.0f;
+    float uncertainty = 0.0f;
+    std::string status;
+    std::string cause_tag;
+};
+
+static Color track_status_color(const std::string& status) {
+    if (status == "FRESH") return {70, 200, 110, 255};
+    if (status == "STALE") return {235, 180, 70, 255};
+    return {220, 90, 90, 255};
+}
+
+static std::vector<TrackStatusStripInfo> collect_track_status(const ViewerState& vs) {
+    std::vector<TrackStatusStripInfo> rows;
+    if (vs.current_tick < 0 || vs.current_tick >= static_cast<int>(vs.frames.size()))
+        return rows;
+
+    const auto& frame = vs.frames[vs.current_tick];
+    rows.reserve(frame.track_updates.size());
+
+    for (const auto& trk : frame.track_updates) {
+        if (!trk.has("owner") || !trk.has("target") || !trk.has("status")) continue;
+
+        TrackStatusStripInfo row;
+        row.owner = static_cast<EntityId>(trk["owner"].as_int());
+        row.target = static_cast<EntityId>(trk["target"].as_int());
+        row.status = trk["status"].as_string();
+        row.confidence = trk.has("conf") ? static_cast<float>(trk["conf"].as_number()) : 0.0f;
+        row.uncertainty = trk.has("unc") ? static_cast<float>(trk["unc"].as_number()) : 0.0f;
+
+        for (int t = vs.current_tick; t >= 0; --t) {
+            bool found = false;
+            for (const auto& prev : vs.frames[t].track_updates) {
+                if (!prev.has("owner") || !prev.has("target")) continue;
+                if (static_cast<EntityId>(prev["owner"].as_int()) != row.owner) continue;
+                if (static_cast<EntityId>(prev["target"].as_int()) != row.target) continue;
+                row.last_update_tick = t;
+                found = true;
+                break;
+            }
+            if (found) break;
+        }
+
+        for (int t = vs.current_tick; t >= 0; --t) {
+            bool found = false;
+            for (const auto& det : vs.frames[t].detections) {
+                if (!det.has("observer") || !det.has("target")) continue;
+                if (static_cast<EntityId>(det["target"].as_int()) != row.target) continue;
+                row.source_sensor = det["observer"].as_int();
+                found = true;
+                break;
+            }
+            if (found) break;
+        }
+
+        for (int t = vs.current_tick; t >= 0; --t) {
+            bool found = false;
+            for (const auto& msg : vs.frames[t].messages) {
+                if (!msg.has("type") || msg["type"].type != JsonValue::STRING) continue;
+                if (msg["type"].as_string() != "msg_sent") continue;
+                if (!msg.has("receiver") || !msg.has("delivery_tick")) continue;
+                if (static_cast<EntityId>(msg["receiver"].as_int()) != row.owner) continue;
+                row.latency_ticks = msg["delivery_tick"].as_int() - t;
+                found = true;
+                break;
+            }
+            if (found) break;
+        }
+
+        row.cause_tag = "nominal";
+        if (row.status == "STALE") row.cause_tag = "negative evidence";
+
+        if (row.status != "FRESH") {
+            for (int t = std::max(0, vs.current_tick - 8); t <= vs.current_tick; ++t) {
+                bool dropped = false;
+                for (const auto& msg : vs.frames[t].messages) {
+                    if (!msg.has("type") || msg["type"].type != JsonValue::STRING) continue;
+                    if (msg["type"].as_string() != "msg_dropped") continue;
+                    if (!msg.has("receiver")) continue;
+                    if (static_cast<EntityId>(msg["receiver"].as_int()) != row.owner) continue;
+                    row.cause_tag = "dropped comm";
+                    dropped = true;
+                    break;
+                }
+                if (dropped) break;
+            }
+        }
+
+        if (row.status == "EXPIRED" && row.cause_tag != "dropped comm")
+            row.cause_tag = "LOS blocked";
+
+        rows.push_back(row);
+    }
+
+    std::sort(rows.begin(), rows.end(), [](const TrackStatusStripInfo& a, const TrackStatusStripInfo& b) {
+        if (a.status != b.status) return a.status < b.status;
+        if (a.owner != b.owner) return a.owner < b.owner;
+        return a.target < b.target;
+    });
+    return rows;
+}
+
+static void draw_track_status_strip(const ViewerState& vs) {
+    const auto rows = collect_track_status(vs);
+    if (rows.empty()) return;
+
+    const int row_h = 18;
+    const int title_h = 24;
+    const int panel_w = 470;
+    const int panel_h = title_h + static_cast<int>(rows.size()) * row_h + 8;
+    const int x = 10;
+    const int y = 92;
+
+    DrawRectangle(x, y, panel_w, panel_h, {22, 22, 28, 215});
+    DrawRectangleLinesEx({static_cast<float>(x), static_cast<float>(y),
+                         static_cast<float>(panel_w), static_cast<float>(panel_h)}, 1.0f, {70, 70, 82, 230});
+    DrawText("Track status strip [T]  owner/target  src  age  latency  conf  unc  cause",
+             x + 8, y + 6, 10, {170, 170, 185, 230});
+
+    int row_y = y + title_h;
+    for (const auto& row : rows) {
+        const Color state_col = track_status_color(row.status);
+        DrawRectangle(x + 4, row_y + 2, 6, row_h - 4, state_col);
+        DrawRectangle(x + 12, row_y + 1, panel_w - 16, row_h - 2, {34, 34, 42, 190});
+
+        const int age = (row.last_update_tick >= 0) ? vs.current_tick - row.last_update_tick : -1;
+        std::string source = (row.source_sensor >= 0) ? std::to_string(row.source_sensor) : "-";
+        std::string age_txt = (age >= 0) ? std::to_string(age) + "t" : "-";
+        std::string lat_txt = (row.latency_ticks >= 0) ? std::to_string(row.latency_ticks) + "t" : "-";
+        std::string line = TextFormat("O%u/T%u  S:%s  A:%s  L:%s  C:%.2f  U:%.2f  %s",
+                                      row.owner, row.target, source.c_str(), age_txt.c_str(),
+                                      lat_txt.c_str(), row.confidence, row.uncertainty, row.cause_tag.c_str());
+        DrawText(line.c_str(), x + 20, row_y + 4, 10, {210, 210, 220, 230});
+        DrawText(row.status.c_str(), x + panel_w - 66, row_y + 4, 10, state_col);
+        row_y += row_h;
+    }
+}
+
 // --- Designations ---
 
 static Color designation_color(const std::string& kind) {
@@ -332,16 +481,15 @@ static Color designation_color(const std::string& kind) {
 }
 
 static void draw_designations(const ViewerState& vs) {
-    if (vs.current_tick < 0 || vs.current_tick >= static_cast<int>(vs.frames.size()))
+    const TickFrame* frame = current_frame_or_null(vs);
+    if (!frame)
         return;
 
-    const auto& frame = vs.frames[vs.current_tick];
-
-    for (const auto& desig : frame.active_designations) {
+    for (const auto& desig : frame->active_designations) {
         // Find matching track position from track_updates
         float px = 0.0f, py = 0.0f;
         bool found = false;
-        for (const auto& trk : frame.track_updates) {
+        for (const auto& trk : frame->track_updates) {
             if (!trk.has("target")) continue;
             EntityId tid = static_cast<EntityId>(trk["target"].as_number());
             if (tid == desig.track_target) {
@@ -382,14 +530,14 @@ static void draw_designations(const ViewerState& vs) {
 // --- Messages & expired tracks ---
 
 static void draw_messages(const ViewerState& vs) {
-    if (vs.current_tick < 0 || vs.current_tick >= static_cast<int>(vs.frames.size()))
+    const TickFrame* frame = current_frame_or_null(vs);
+    if (!frame)
         return;
 
-    const auto& frame = vs.frames[vs.current_tick];
     float sh = static_cast<float>(GetScreenHeight());
 
     int y_offset = 0;
-    for (const auto& msg : frame.messages) {
+    for (const auto& msg : frame->messages) {
         if (!msg.has("type") || msg["type"].type != JsonValue::STRING) continue;
         std::string type = msg["type"].as_string();
         Color col;
@@ -402,7 +550,7 @@ static void draw_messages(const ViewerState& vs) {
         y_offset++;
     }
 
-    for (const auto& expired : frame.track_expired) {
+    for (const auto& expired : frame->track_expired) {
         int owner = expired.int_or("owner", -1);
         int target = expired.int_or("target", -1);
         const char* txt = TextFormat("// TRK_EXPIRED [OWN:%d TGT:%d]", owner, target);
@@ -571,7 +719,7 @@ static void draw_ui(const ViewerState& vs) {
              vs.show_designations ? Color{180, 180, 190, 200} : Color{100, 100, 110, 150});
 
     // Controls hint
-    DrawText("[ SPACE: PLAY/PAUSE | ARROWS: STEP | +/-: SPEED | SCROLL: ZOOM | RIGHT-DRAG: PAN | R: RANGES | W: WAYPOINTS | D: DESIG ]",
+    DrawText("[ SPACE: PLAY/PAUSE | ARROWS: STEP | +/-: SPEED | SCROLL: ZOOM | RIGHT-DRAG: PAN | R: RANGES | W: WAYPOINTS | D: DESIG | T: TRACKS ]",
              10, 10, 10, {120, 120, 130, 160});
 }
 
@@ -587,6 +735,8 @@ void viewer_draw(const ViewerState& vs) {
         draw_waypoint_paths(vs);
     draw_detections(vs);
     draw_tracks(vs);
+    if (vs.show_track_status_strip)
+        draw_track_status_strip(vs);
     if (vs.show_designations)
         draw_designations(vs);
     draw_entities(vs);
