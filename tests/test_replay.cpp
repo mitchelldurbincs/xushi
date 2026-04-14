@@ -72,8 +72,7 @@ static void test_serialization_roundtrip(TestContext& ctx) {
 }
 
 int main() {
-    TestContext ctx;
-    std::printf("Running replay tests...\n");
+    return run_test_suite("replay", [](TestContext& ctx) {
     test_write_read_roundtrip(ctx);
     test_filter_by_type(ctx);
     test_header_event(ctx);
@@ -81,5 +80,5 @@ int main() {
     test_world_hash_event(ctx);
     test_serialization_roundtrip(ctx);
     std::remove(TEST_FILE);
-    return ctx.report_and_exit_code();
+    });
 }

@@ -57,8 +57,7 @@ static void test_transition_blocked_to_clear(TestContext& ctx) {
 }
 
 int main() {
-    TestContext ctx;
-    std::printf("Running LOS tests...\n");
+    return run_test_suite("LOS", [](TestContext& ctx) {
     test_clear_los_no_obstacles(ctx);
     test_blocked_by_obstacle(ctx);
     test_not_blocked_when_obstacle_is_off_path(ctx);
@@ -68,5 +67,5 @@ int main() {
     test_zero_length_segment_clear(ctx);
     test_parallel_to_obstacle_edge(ctx);
     test_transition_blocked_to_clear(ctx);
-    return ctx.report_and_exit_code();
+    });
 }

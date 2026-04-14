@@ -174,13 +174,12 @@ static void test_distance_comms_far_belief_lags_near(TestContext& ctx) {
 }
 
 int main() {
-    TestContext ctx;
-    std::printf("Running golden tests...\n");
+    return run_test_suite("golden", [](TestContext& ctx) {
     test_los_blocked_no_detection(ctx);
     test_clear_los_detection_on_tick_0(ctx);
     test_delayed_comms_belief_lags(ctx);
     test_stale_track_expires_by_tick_n(ctx);
     test_distance_comms_latency_calculation(ctx);
     test_distance_comms_far_belief_lags_near(ctx);
-    return ctx.report_and_exit_code();
+    });
 }

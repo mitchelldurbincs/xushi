@@ -185,13 +185,12 @@ static void test_parity_multi_agent(TestContext& ctx) {
 }
 
 int main() {
-    TestContext ctx;
-    std::printf("Running parity tests...\n");
+    return run_test_suite("parity", [](TestContext& ctx) {
     test_parity_default(ctx);
     test_parity_benchmark_dense(ctx);
     test_parity_noisy(ctx);
     test_parity_task_verify(ctx);
     test_parity_waypoint(ctx);
     test_parity_multi_agent(ctx);
-    return ctx.report_and_exit_code();
+    });
 }
