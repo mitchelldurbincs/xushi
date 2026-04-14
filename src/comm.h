@@ -1,14 +1,14 @@
 #pragma once
 
 #include "types.h"
-#include "sensing.h"
+#include "observation_state.h"
 #include "rng.h"
 #include <vector>
 
 struct MessagePayload {
     enum Type { OBSERVATION };
     Type type;
-    Observation observation; // valid when type == OBSERVATION
+    SharedObservationPayload observation; // valid when type == OBSERVATION
 };
 
 struct Message {
