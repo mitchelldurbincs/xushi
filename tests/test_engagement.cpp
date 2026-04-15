@@ -25,7 +25,7 @@ static void test_engagement_gates_include_track_and_truth_failures(TestContext& 
     in.target_truth = &target;
     in.world.tick = 10;
 
-    EngagementGateResult out = compute_engagement_gates(in);
+    EngagementGateResult out = compute_engagement_gates(in, EngagementGateStage::TruthAdjudication);
 
     ctx.check(!out.allowed(), "engagement rejected");
     ctx.check(has_reason(out.failure_mask, GateFailureReason::NoCapability), "includes capability gate");
@@ -82,7 +82,7 @@ static void test_capable_actor_passes_gates(TestContext& ctx) {
     in.world.actor_id = actor.id;
     in.world.track_target_id = target.id;
 
-    EngagementGateResult out = compute_engagement_gates(in);
+    EngagementGateResult out = compute_engagement_gates(in, EngagementGateStage::TruthAdjudication);
 
     ctx.check(out.allowed(), "capable actor passes all gates");
     ctx.check(out.failure_mask == 0, "no failure reasons");
@@ -127,7 +127,7 @@ static void test_same_team_engagement_rejected(TestContext& ctx) {
     in.world.actor_id = actor.id;
     in.world.track_target_id = target.id;
 
-    EngagementGateResult out = compute_engagement_gates(in);
+    EngagementGateResult out = compute_engagement_gates(in, EngagementGateStage::TruthAdjudication);
 
     ctx.check(!out.allowed(), "same-team engagement rejected");
     ctx.check(has_reason(out.failure_mask, GateFailureReason::FriendlyTarget),
@@ -173,7 +173,7 @@ static void test_different_team_no_friendly_target(TestContext& ctx) {
     in.world.actor_id = actor.id;
     in.world.track_target_id = target.id;
 
-    EngagementGateResult out = compute_engagement_gates(in);
+    EngagementGateResult out = compute_engagement_gates(in, EngagementGateStage::TruthAdjudication);
 
     ctx.check(!has_reason(out.failure_mask, GateFailureReason::FriendlyTarget),
           "no FriendlyTarget for different teams");
@@ -215,7 +215,7 @@ static void test_cooldown_blocks_engagement(TestContext& ctx) {
     in.effect_profile = &profile;
     in.world.tick = 5;
 
-    EngagementGateResult out = compute_engagement_gates(in);
+    EngagementGateResult out = compute_engagement_gates(in, EngagementGateStage::TruthAdjudication);
 
     ctx.check(!out.allowed(), "cooldown blocks engagement");
     ctx.check(has_reason(out.failure_mask, GateFailureReason::Cooldown), "Cooldown flagged");
@@ -256,7 +256,7 @@ static void test_out_of_ammo_blocks_engagement(TestContext& ctx) {
     in.effect_profile = &profile;
     in.world.tick = 5;
 
-    EngagementGateResult out = compute_engagement_gates(in);
+    EngagementGateResult out = compute_engagement_gates(in, EngagementGateStage::TruthAdjudication);
 
     ctx.check(!out.allowed(), "out of ammo blocks engagement");
     ctx.check(has_reason(out.failure_mask, GateFailureReason::OutOfAmmo), "OutOfAmmo flagged");
@@ -310,7 +310,7 @@ static void test_friendly_risk_only_flags_same_team(TestContext& ctx) {
     in.world.track_target_id = target.id;
     in.world.entities = &entities;
 
-    EngagementGateResult out1 = compute_engagement_gates(in);
+    EngagementGateResult out1 = compute_engagement_gates(in, EngagementGateStage::TruthAdjudication);
     ctx.check(!has_reason(out1.failure_mask, GateFailureReason::FriendlyRisk),
           "enemy bystander does not trigger FriendlyRisk");
 
@@ -322,7 +322,7 @@ static void test_friendly_risk_only_flags_same_team(TestContext& ctx) {
 
     entities.push_back(friendly_bystander);
 
-    EngagementGateResult out2 = compute_engagement_gates(in);
+    EngagementGateResult out2 = compute_engagement_gates(in, EngagementGateStage::TruthAdjudication);
     ctx.check(has_reason(out2.failure_mask, GateFailureReason::FriendlyRisk),
           "same-team bystander triggers FriendlyRisk");
 }
@@ -378,7 +378,7 @@ static void test_engagement_rules_override_friendly_risk_radius(TestContext& ctx
     in.world.track_target_id = target.id;
     in.world.entities = &entities;
 
-    EngagementGateResult out = compute_engagement_gates(in);
+    EngagementGateResult out = compute_engagement_gates(in, EngagementGateStage::TruthAdjudication);
     ctx.check(!has_reason(out.failure_mask, GateFailureReason::FriendlyRisk),
           "configurable friendly risk radius is honored");
 }

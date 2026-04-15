@@ -1,0 +1,33 @@
+{
+  "seed": 20260416,
+  "dt": 1.0,
+  "ticks": 8,
+  "max_sensor_range": 100.0,
+  "obstacles": [],
+  "channel": {
+    "base_latency": 0,
+    "per_distance": 0.0,
+    "loss": 0.0
+  },
+  "effect_profiles": [
+    {
+      "name": "fast_shot",
+      "range": 100.0,
+      "requires_los": false,
+      "identity_threshold": 0.0,
+      "corroboration_threshold": 0.0,
+      "hit_probability": 1.0,
+      "vitality_delta_min": -10,
+      "vitality_delta_max": -10,
+      "cooldown_ticks": 2,
+      "ammo_cost": 1
+    }
+  ],
+  "entities": [
+    {"id": 0, "type": "blue_operator", "team": 0, "pos": [10, 10], "vel": [0, 0], "can_sense": true, "can_track": true, "can_engage": true, "is_observable": true, "ammo": 2, "allowed_effect_profile_indices": [0]},
+    {"id": 1, "type": "blue_drone", "team": 0, "pos": [10, 20], "vel": [0, 0], "can_sense": true, "is_observable": true},
+    {"id": 10, "type": "red_operator", "team": 1, "pos": [20, 10], "vel": [0, 0], "can_track": true, "is_observable": true, "vitality": 100, "max_vitality": 100},
+    {"id": 20, "type": "cyber_node", "team": -1, "pos": [50, 20], "vel": [0, 0], "can_track": true, "is_observable": true},
+    {"id": 21, "type": "door_light_control", "team": -1, "pos": [50, 80], "vel": [0, 0], "is_observable": true}
+  ]
+}
