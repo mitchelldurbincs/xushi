@@ -38,11 +38,10 @@ static void test_normal_mean_near_zero(TestContext& ctx) {
 }
 
 int main() {
-    TestContext ctx;
-    std::printf("Running RNG tests...\n");
+    return run_test_suite("RNG", [](TestContext& ctx) {
     test_same_seed_same_sequence(ctx);
     test_different_seeds_differ(ctx);
     test_uniform_in_range(ctx);
     test_normal_mean_near_zero(ctx);
-    return ctx.report_and_exit_code();
+    });
 }

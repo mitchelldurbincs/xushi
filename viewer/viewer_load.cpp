@@ -42,41 +42,35 @@ static const char* json_type_name(JsonValue::Type type) {
     return "unknown";
 }
 
-static const std::string& get_required_string(const JsonValue& obj, const std::string& key, const std::string& context) {
+static const JsonValue& get_required_value_of_type(const JsonValue& obj, const std::string& key,
+                                                   JsonValue::Type expected_type,
+                                                   const char* expected_desc,
+                                                   const std::string& context) {
     if (!obj.has(key))
         throw std::runtime_error(context + ": missing required key '" + key + "'");
     const auto& v = obj[key];
-    if (v.type != JsonValue::STRING)
-        throw std::runtime_error(context + ": key '" + key + "' expected string, got " + json_type_name(v.type));
-    return v.as_string();
+    if (v.type != expected_type) {
+        throw std::runtime_error(context + ": key '" + key + "' expected " + expected_desc + ", got " +
+                                 json_type_name(v.type));
+    }
+    return v;
+}
+
+static const std::string& get_required_string(const JsonValue& obj, const std::string& key, const std::string& context) {
+    return get_required_value_of_type(obj, key, JsonValue::STRING, "string", context).as_string();
 }
 
 static int get_required_int(const JsonValue& obj, const std::string& key, const std::string& context) {
-    if (!obj.has(key))
-        throw std::runtime_error(context + ": missing required key '" + key + "'");
-    const auto& v = obj[key];
-    if (v.type != JsonValue::NUMBER)
-        throw std::runtime_error(context + ": key '" + key + "' expected number/int, got " + json_type_name(v.type));
-    return v.as_int();
+    return get_required_value_of_type(obj, key, JsonValue::NUMBER, "number/int", context).as_int();
 }
 
 static double get_required_number(const JsonValue& obj, const std::string& key, const std::string& context) {
-    if (!obj.has(key))
-        throw std::runtime_error(context + ": missing required key '" + key + "'");
-    const auto& v = obj[key];
-    if (v.type != JsonValue::NUMBER)
-        throw std::runtime_error(context + ": key '" + key + "' expected number, got " + json_type_name(v.type));
-    return v.as_number();
+    return get_required_value_of_type(obj, key, JsonValue::NUMBER, "number", context).as_number();
 }
 
 static const std::vector<JsonValue>& get_required_array(const JsonValue& obj, const std::string& key, size_t min_len,
                                                         const std::string& context) {
-    if (!obj.has(key))
-        throw std::runtime_error(context + ": missing required key '" + key + "'");
-    const auto& v = obj[key];
-    if (v.type != JsonValue::ARRAY)
-        throw std::runtime_error(context + ": key '" + key + "' expected array, got " + json_type_name(v.type));
-    const auto& arr = v.as_array();
+    const auto& arr = get_required_value_of_type(obj, key, JsonValue::ARRAY, "array", context).as_array();
     if (arr.size() < min_len)
         throw std::runtime_error(context + ": key '" + key + "' expected array len >= " + std::to_string(min_len));
     return arr;

@@ -3,9 +3,11 @@
 #include "sensing.h"
 #include "invariants.h"
 #include "engagement.h"
+#include "world_hash.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <stdexcept>
 #include <unordered_set>
 
 size_t SimEngine::GridCoordHash::operator()(const SimEngine::GridCoord& c) const {
@@ -16,34 +18,7 @@ size_t SimEngine::GridCoordHash::operator()(const SimEngine::GridCoord& c) const
 
 // FNV-1a hash of entity positions and belief state.
 uint64_t SimEngine::compute_world_hash() const {
-    uint64_t h = 14695981039346656037ULL;
-    auto mix = [&](const void* data, size_t len) {
-        const auto* bytes = static_cast<const uint8_t*>(data);
-        for (size_t i = 0; i < len; ++i) {
-            h ^= bytes[i];
-            h *= 1099511628211ULL;
-        }
-    };
-    for (const auto& e : entities_) {
-        mix(&e.id, sizeof(e.id));
-        mix(&e.position.x, sizeof(float));
-        mix(&e.position.y, sizeof(float));
-        mix(&e.current_waypoint, sizeof(e.current_waypoint));
-    }
-    for (const auto& [owner_id, belief] : beliefs_) {
-        mix(&owner_id, sizeof(owner_id));
-        for (const auto& t : belief.tracks) {
-            mix(&t.target, sizeof(t.target));
-            mix(&t.estimated_position.x, sizeof(float));
-            mix(&t.estimated_position.y, sizeof(float));
-            mix(&t.confidence, sizeof(float));
-            mix(&t.uncertainty, sizeof(float));
-            mix(&t.class_id, sizeof(t.class_id));
-            mix(&t.identity_confidence, sizeof(float));
-            mix(&t.corroboration_count, sizeof(t.corroboration_count));
-        }
-    }
-    return h;
+    return compute_world_hash_canonical(entities_, beliefs_.states());
 }
 
 void SimEngine::init(const Scenario& scn, Policy* policy, GameMode* game_mode) {
@@ -71,9 +46,8 @@ void SimEngine::init(const Scenario& scn, Policy* policy, GameMode* game_mode) {
 
     rng_ = Rng(scn.seed);
     comms_ = CommSystem{};
-    beliefs_.clear();
-    for (auto* t : trackers_)
-        beliefs_[t->id] = BeliefState{};
+    beliefs_.init_trackers(trackers_);
+    truth_state_.clear();
 
     stats_ = SystemStats{};
     policy_ = policy ? policy : &null_policy_;
@@ -89,10 +63,25 @@ void SimEngine::init(const Scenario& scn, Policy* policy, GameMode* game_mode) {
     last_game_mode_result_ = GameModeResult{};
     if (game_mode_)
         game_mode_->init(scn, entities_);
+
+    round_state_ = RoundState{};
 }
 
-void SimEngine::step(int tick, TickHooks& hooks) {
-    // Game mode: tick start
+void SimEngine::require_phase(RoundPhase expected) const {
+    if (round_state_.phase != expected)
+        throw std::logic_error("illegal round phase transition");
+}
+
+void SimEngine::advance_phase(RoundPhase next_phase) {
+    round_state_.phase = next_phase;
+}
+
+void SimEngine::begin_round(int tick, TickHooks& hooks) {
+    require_phase(RoundPhase::Idle);
+    round_state_.round_tick = tick;
+    round_state_.activation_index = 0;
+    advance_phase(RoundPhase::RoundStart);
+
     if (game_mode_)
         game_mode_->on_tick_start(tick, entities_);
 
@@ -104,27 +93,97 @@ void SimEngine::step(int tick, TickHooks& hooks) {
         hooks.on_phase_timing(phase, elapsed.count());
     };
 
+    advance_phase(RoundPhase::Cooldowns);
     run_phase("cooldowns", [&] { tick_cooldowns(); });
-    run_phase("movement", [&] {
-        tick_movement(tick, hooks);
-        rebuild_entity_index();
-        rebuild_spatial_bins(spatial_cell_size_);
+
+    advance_phase(RoundPhase::Activations);
+}
+
+bool SimEngine::step_activation(int tick, TickHooks& hooks) {
+    if (tick != round_state_.round_tick)
+        throw std::logic_error("activation tick mismatch");
+
+    require_phase(RoundPhase::Activations);
+
+    if (round_state_.activation_index >= entities_.size()) {
+        hooks.on_positions_check(entities_);
+        return true;
+    }
+
+    const auto run_phase = [&](const char* phase, auto&& fn) {
+        const auto t0 = std::chrono::steady_clock::now();
+        fn();
+        const auto t1 = std::chrono::steady_clock::now();
+        const std::chrono::duration<double, std::micro> elapsed = t1 - t0;
+        hooks.on_phase_timing(phase, elapsed.count());
+    };
+
+    run_phase("activation", [&] {
+        tick_activation(tick, round_state_.activation_index, hooks);
     });
-    run_phase("sensing", [&] { tick_sensing(tick, hooks); });
+
+    ++round_state_.activation_index;
+    if (round_state_.activation_index >= entities_.size()) {
+        hooks.on_positions_check(entities_);
+        return true;
+    }
+    return false;
+}
+
+void SimEngine::finalize_round(int tick, TickHooks& hooks) {
+    if (tick != round_state_.round_tick)
+        throw std::logic_error("round finalize tick mismatch");
+
+    require_phase(RoundPhase::Activations);
+    if (round_state_.activation_index < entities_.size())
+        throw std::logic_error("cannot finalize round before all activations");
+
+    const auto run_phase = [&](const char* phase, auto&& fn) {
+        const auto t0 = std::chrono::steady_clock::now();
+        fn();
+        const auto t1 = std::chrono::steady_clock::now();
+        const std::chrono::duration<double, std::micro> elapsed = t1 - t0;
+        hooks.on_phase_timing(phase, elapsed.count());
+    };
+
+    // Spatial bins are referenced by tasking and other spatial queries below;
+    // rebuild once after all activations have updated positions.
+    rebuild_spatial_bins(spatial_cell_size_);
+
+    advance_phase(RoundPhase::SupportPublicationGate);
+    run_phase("support_publication_gate", [&] { tick_support_publication_gate(tick, hooks); });
 
     std::vector<Message> delivered;
-    run_phase("communication", [&] { tick_communication(tick, delivered); });
+    advance_phase(RoundPhase::Communication);
+    run_phase("communication", [&] { tick_communication(tick, hooks, delivered); });
+
+    advance_phase(RoundPhase::Belief);
     run_phase("belief", [&] { tick_belief(tick, hooks, delivered); });
-    run_phase("actions", [&] { tick_actions(tick, hooks); });
+
+    advance_phase(RoundPhase::ReactionResolution);
+    run_phase("reaction_resolution", [&] { tick_reaction_resolution(tick, hooks); });
+
+    advance_phase(RoundPhase::Tasks);
     run_phase("tasks", [&] { tick_tasks(tick, hooks); });
+
+    advance_phase(RoundPhase::PeriodicSnapshots);
     run_phase("periodic_snapshots", [&] { tick_periodic_snapshots(tick, hooks); });
 
-    // ── Game mode: tick end ──
+    advance_phase(RoundPhase::RoundEnd);
     if (game_mode_) {
         last_game_mode_result_ = game_mode_->on_tick_end(tick, entities_);
         if (last_game_mode_result_.finished)
             hooks.on_game_mode_end(tick, last_game_mode_result_);
     }
+
+    round_state_ = RoundState{};
+}
+
+void SimEngine::step(int tick, TickHooks& hooks) {
+    begin_round(tick, hooks);
+    while (!step_activation(tick, hooks)) {
+    }
+    finalize_round(tick, hooks);
 }
 
 void SimEngine::tick_cooldowns() {
@@ -145,200 +204,202 @@ void SimEngine::move_toward_target(ScenarioEntity& entity, const Vec2& target) c
         entity.position = target;
 }
 
-void SimEngine::tick_movement(int tick, TickHooks& hooks) {
+void SimEngine::tick_activation(int tick, size_t activation_index, TickHooks& hooks) {
     const Scenario& scn = *scn_;
-    for (auto& e : entities_) {
-        if (e.vitality <= 0) continue;
+    ScenarioEntity& e = entities_[activation_index];
+    if (e.vitality <= 0)
+        return;
 
-        if (e.can_engage && !e.allowed_effect_profile_indices.empty()) {
-            int ep_idx = e.allowed_effect_profile_indices[0];
-            float engage_range = 0.0f;
-            if (ep_idx >= 0 && ep_idx < static_cast<int>(scn.effect_profiles.size()))
-                engage_range = scn.effect_profiles[ep_idx].range;
-            if (engage_range > 0.0f) {
-                bool enemy_in_range = false;
-                for (const auto& other : entities_) {
-                    if (other.id == e.id) continue;
-                    if (!other.can_engage || other.vitality <= 0) continue;
-                    if (e.team >= 0 && other.team >= 0 && e.team == other.team) continue;
-                    float dist = (other.position - e.position).length();
-                    if (dist <= engage_range) {
-                        enemy_in_range = true;
-                        break;
-                    }
+    bool hold_position_for_engagement = false;
+    if (e.can_engage && !e.allowed_effect_profile_indices.empty()) {
+        int ep_idx = e.allowed_effect_profile_indices[0];
+        float engage_range = 0.0f;
+        if (ep_idx >= 0 && ep_idx < static_cast<int>(scn.effect_profiles.size()))
+            engage_range = scn.effect_profiles[ep_idx].range;
+        if (engage_range > 0.0f) {
+            for (const auto& other : entities_) {
+                if (other.id == e.id) continue;
+                if (!other.can_engage || other.vitality <= 0) continue;
+                if (e.team >= 0 && other.team >= 0 && e.team == other.team) continue;
+                float dist = (other.position - e.position).length();
+                if (dist <= engage_range) {
+                    hold_position_for_engagement = true;
+                    break;
                 }
-                if (enemy_in_range) {
-                    hooks.on_entity_moved(tick, e.id, e.position);
-                    continue;
+            }
+        }
+    }
+
+    if (hold_position_for_engagement) {
+        hooks.on_entity_moved(tick, e.id, e.position);
+    } else if (active_tasks_.count(e.id)) {
+        const Task& task = active_tasks_[e.id];
+        move_toward_target(e, task.target_position);
+        hooks.on_entity_moved(tick, e.id, e.position);
+    } else if (e.can_sense) {
+        PolicyObservation pobs;
+        pobs.id = e.id;
+        pobs.position = e.position;
+        pobs.tick = tick;
+        const BeliefState* belief = beliefs_.find(e.id);
+        if (belief) {
+            auto& tracks = belief->tracks;
+            for (const auto& t : tracks) {
+                PolicyTrackObservation policy_track{};
+                policy_track.target = t.target;
+                policy_track.estimated_position = t.estimated_position;
+                policy_track.confidence = t.confidence;
+                policy_track.uncertainty = t.uncertainty;
+                policy_track.status = t.status;
+                policy_track.class_id = t.class_id;
+                policy_track.identity_confidence = t.identity_confidence;
+
+                if (pobs.num_tracks < kMaxPolicyTracks) {
+                    pobs.local_tracks[pobs.num_tracks++] = policy_track;
+                } else {
+                    int worst = 0;
+                    for (int j = 1; j < kMaxPolicyTracks; ++j)
+                        if (pobs.local_tracks[j].confidence < pobs.local_tracks[worst].confidence)
+                            worst = j;
+                    if (policy_track.confidence > pobs.local_tracks[worst].confidence)
+                        pobs.local_tracks[worst] = policy_track;
                 }
             }
         }
 
-        auto task_it = active_tasks_.find(e.id);
-        if (task_it != active_tasks_.end()) {
-            move_toward_target(e, task_it->second.target_position);
+        auto target = policy_->get_move_target(pobs);
+        if (target) {
+            move_toward_target(e, *target);
             hooks.on_entity_moved(tick, e.id, e.position);
-            continue;
-        }
-
-        if (e.can_sense) {
-            PolicyObservation pobs;
-            pobs.id = e.id;
-            pobs.position = e.position;
-            pobs.tick = tick;
-            auto belief_it = beliefs_.find(e.id);
-            if (belief_it != beliefs_.end()) {
-                auto& tracks = belief_it->second.tracks;
-                for (const auto& t : tracks) {
-                    if (pobs.num_tracks < kMaxPolicyTracks) {
-                        pobs.local_tracks[pobs.num_tracks++] = t;
-                    } else {
-                        int worst = 0;
-                        for (int j = 1; j < kMaxPolicyTracks; ++j)
-                            if (pobs.local_tracks[j].confidence < pobs.local_tracks[worst].confidence)
-                                worst = j;
-                        if (t.confidence > pobs.local_tracks[worst].confidence)
-                            pobs.local_tracks[worst] = t;
-                    }
-                }
-            }
-            auto target = policy_->get_move_target(pobs);
-            if (target) {
-                move_toward_target(e, *target);
+        } else {
+            auto event = update_movement(e, scn.dt, rng_);
+            if (!e.waypoints.empty() || e.speed > 0.0f)
                 hooks.on_entity_moved(tick, e.id, e.position);
-                continue;
-            }
+            if (event.arrived)
+                hooks.on_waypoint_arrival(tick, e.id, event.waypoint_index, e.position);
         }
-
+    } else {
         auto event = update_movement(e, scn.dt, rng_);
         if (!e.waypoints.empty() || e.speed > 0.0f)
             hooks.on_entity_moved(tick, e.id, e.position);
         if (event.arrived)
             hooks.on_waypoint_arrival(tick, e.id, event.waypoint_index, e.position);
     }
-    hooks.on_positions_check(entities_);
-}
 
-void SimEngine::tick_sensing(int tick, TickHooks& hooks) {
-    const Scenario& scn = *scn_;
-    const auto broadcast_observation = [&](ScenarioEntity* sensor, const Observation& obs) {
-        MessagePayload payload;
-        payload.type = MessagePayload::OBSERVATION;
-        payload.observation = obs;
-        const auto send_to = [&](ScenarioEntity* tracker) {
-            float dist = (tracker->position - sensor->position).length();
-            int dt = comms_.send(sensor->id, tracker->id, payload, tick, dist, scn.channel, rng_);
-            if (dt >= 0) {
-                stats_.messages_sent++;
-                hooks.on_msg_sent(tick, sensor->id, tracker->id, dt);
-            } else {
-                stats_.messages_dropped++;
-                hooks.on_msg_dropped(tick, sensor->id, tracker->id);
-            }
-        };
+    if (!e.can_sense)
+        return;
 
-        if (sensor->team < 0) {
-            for (auto* tracker : trackers_)
-                send_to(tracker);
-            return;
+    std::vector<EntityId> detected_targets;
+    for (auto* obs_ent : observables_) {
+        if (e.id == obs_ent->id) continue;
+        stats_.sensors_updated++;
+        stats_.rays_cast++;
+
+        Observation obs{};
+        bool detected = sense(map_, e.position, e.id,
+                              obs_ent->position, obs_ent->id,
+                              scn.max_sensor_range, tick, rng_, obs,
+                              scn.perception.miss_rate,
+                              obs_ent->class_id,
+                              scn.perception.class_confusion_rate);
+        if (detected) {
+            stats_.detections_generated++;
+            detected_targets.push_back(obs_ent->id);
+            if (e.can_track)
+                beliefs_.apply_local_observation(e.id, obs, tick);
+            hooks.on_detection(tick, obs);
+
+            truth_state_.queue_publication(e.id, obs);
+        } else {
+            hooks.on_miss(tick, e.id);
         }
+    }
 
-        auto same_team_it = trackers_by_team_.find(sensor->team);
-        if (same_team_it != trackers_by_team_.end()) {
-            for (auto* tracker : same_team_it->second)
-                send_to(tracker);
-        }
-        for (auto* tracker : trackers_no_team_)
-            send_to(tracker);
-    };
+    if (e.can_track) {
+        beliefs_.apply_negative_evidence(e.id,
+            e.position, scn.max_sensor_range, map_,
+            detected_targets, scn.belief.negative_evidence_factor);
+    }
 
-    for (auto* sensor : sensors_) {
-        if (sensor->vitality <= 0) continue;
-        std::vector<EntityId> detected_targets;
-        std::unordered_set<EntityId> considered;
-        for_each_candidate_in_range(sensor->position, scn.max_sensor_range, [&](size_t idx) {
-            auto* obs_ent = &entities_[idx];
-            if (!obs_ent->is_observable) return;
-            if (!considered.insert(obs_ent->id).second) return;
-            if (sensor->id == obs_ent->id) return;
-            stats_.sensors_updated++;
-            stats_.rays_cast++;
+    if (scn.perception.false_positive_rate > 0.0f &&
+        rng_.uniform() < scn.perception.false_positive_rate) {
+        float angle = rng_.uniform() * kTau;
+        float range = rng_.uniform() * scn.max_sensor_range;
+        Observation phantom{};
+        phantom.tick = tick;
+        phantom.observer = e.id;
+        phantom.target = kPhantomTargetId;
+        phantom.estimated_position = e.position +
+            Vec2{std::cos(angle), std::sin(angle)} * range;
+        phantom.uncertainty = kPhantomUncertainty;
+        phantom.confidence = kPhantomConfidenceMin + rng_.uniform() * kPhantomConfidenceRange;
+        phantom.is_false_positive = true;
 
-            Observation obs{};
-            bool detected = sense(map_, sensor->position, sensor->id,
-                                  obs_ent->position, obs_ent->id,
-                                  scn.max_sensor_range, tick, rng_, obs,
-                                  scn.perception.miss_rate,
-                                  obs_ent->class_id,
-                                  scn.perception.class_confusion_rate);
-            if (detected) {
-                stats_.detections_generated++;
-                detected_targets.push_back(obs_ent->id);
-                if (sensor->can_track)
-                    beliefs_[sensor->id].update(obs, tick);
-                hooks.on_detection(tick, obs);
-                broadcast_observation(sensor, obs);
-            } else {
-                hooks.on_miss(tick, sensor->id);
-            }
-        });
+        if (e.can_track)
+            beliefs_.apply_local_observation(e.id, phantom, tick);
 
-        if (sensor->can_track) {
-            beliefs_[sensor->id].apply_negative_evidence(
-                sensor->position, scn.max_sensor_range, map_,
-                detected_targets, scn.belief.negative_evidence_factor);
-        }
+        hooks.on_detection(tick, phantom);
+        hooks.on_false_positive(tick, e.id, phantom);
 
-        if (scn.perception.false_positive_rate > 0.0f &&
-            rng_.uniform() < scn.perception.false_positive_rate) {
-            float angle = rng_.uniform() * kTau;
-            float range = rng_.uniform() * scn.max_sensor_range;
-            Observation phantom{};
-            phantom.tick = tick;
-            phantom.observer = sensor->id;
-            phantom.target = kPhantomTargetId;
-            phantom.estimated_position = sensor->position +
-                Vec2{std::cos(angle), std::sin(angle)} * range;
-            phantom.uncertainty = kPhantomUncertainty;
-            phantom.confidence = kPhantomConfidenceMin + rng_.uniform() * kPhantomConfidenceRange;
-            phantom.is_false_positive = true;
-
-            if (sensor->can_track)
-                beliefs_[sensor->id].update(phantom, tick);
-
-            hooks.on_detection(tick, phantom);
-            hooks.on_false_positive(tick, sensor->id, phantom);
-            broadcast_observation(sensor, phantom);
-        }
+        truth_state_.queue_publication(e.id, phantom);
     }
 }
 
-void SimEngine::tick_communication(int tick, std::vector<Message>& delivered) {
+void SimEngine::tick_communication(int tick, TickHooks& hooks, std::vector<Message>& delivered) {
+    const Scenario& scn = *scn_;
+    for (const auto& publication : truth_state_.pending_publications()) {
+        const ScenarioEntity* sender = nullptr;
+        for (const auto& entity : entities_) {
+            if (entity.id == publication.sender) {
+                sender = &entity;
+                break;
+            }
+        }
+        if (!sender)
+            continue;
+
+        MessagePayload payload;
+        payload.type = MessagePayload::OBSERVATION;
+        payload.observation = publication.payload;
+        for (auto* tracker : trackers_) {
+            if (sender->team >= 0 && tracker->team >= 0 && sender->team != tracker->team)
+                continue;
+            float dist = (tracker->position - sender->position).length();
+            int dt = comms_.send(sender->id, tracker->id, payload, tick, dist, scn.channel, rng_);
+            if (dt >= 0) {
+                stats_.messages_sent++;
+                hooks.on_msg_sent(tick, sender->id, tracker->id, dt);
+            } else {
+                stats_.messages_dropped++;
+                hooks.on_msg_dropped(tick, sender->id, tracker->id);
+            }
+        }
+    }
+    truth_state_.clear();
+
     comms_.deliver(tick, delivered);
 }
 
 void SimEngine::tick_belief(int tick, TickHooks& hooks, const std::vector<Message>& delivered) {
     const Scenario& scn = *scn_;
     std::map<EntityId, std::vector<EntityId>> tracked_before;
-    for (auto& [gid, belief] : beliefs_) {
+    for (auto& [gid, belief] : beliefs_.states()) {
         for (const auto& t : belief.tracks)
             tracked_before[gid].push_back(t.target);
     }
 
     for (const auto& msg : delivered) {
         stats_.messages_delivered++;
-        auto it = beliefs_.find(msg.receiver);
-        if (it != beliefs_.end())
-            it->second.update(msg.payload.observation, tick);
+        beliefs_.apply_published_observation(msg.receiver, msg.payload.observation, tick);
     }
-    for (auto& [gid, belief] : beliefs_)
+    for (auto& [gid, belief] : beliefs_.states())
         belief.decay(tick, scn.dt, scn.belief);
 
-    for (auto& [gid, belief] : beliefs_)
+    for (auto& [gid, belief] : beliefs_.states())
         hooks.on_belief_invariant_check(belief);
 
     int total_active = 0;
-    for (auto& [gid, belief] : beliefs_) {
+    for (auto& [gid, belief] : beliefs_.states()) {
         total_active += static_cast<int>(belief.tracks.size());
         for (EntityId id : tracked_before[gid]) {
             if (!belief.find_track(id))
@@ -350,7 +411,7 @@ void SimEngine::tick_belief(int tick, TickHooks& hooks, const std::vector<Messag
     for (const auto& msg : delivered)
         hooks.on_msg_delivered(tick, msg.sender, msg.receiver);
 
-    for (auto& [gid, belief] : beliefs_) {
+    for (auto& [gid, belief] : beliefs_.states()) {
         for (const auto& t : belief.tracks)
             hooks.on_track_update(tick, gid, t);
         for (EntityId id : tracked_before[gid]) {
@@ -372,7 +433,7 @@ void SimEngine::tick_tasks(int tick, TickHooks& hooks) {
         if (dist_sq > kTaskArrivalRadius * kTaskArrivalRadius) continue;
 
         bool corroborated = false;
-        for (auto& [gid, belief] : beliefs_) {
+        for (auto& [gid, belief] : beliefs_.states()) {
             const Track* trk = belief.find_track(task.target_id);
             if (trk && trk->status == TrackStatus::FRESH) {
                 corroborated = true;
@@ -387,8 +448,9 @@ void SimEngine::tick_tasks(int tick, TickHooks& hooks) {
         active_tasks_.erase(eid);
 
     for (auto* tracker_ent : trackers_) {
-        auto& belief = beliefs_[tracker_ent->id];
-        for (const auto& trk : belief.tracks) {
+        BeliefState* belief = beliefs_.find(tracker_ent->id);
+        if (!belief) continue;
+        for (const auto& trk : belief->tracks) {
             if (trk.status != TrackStatus::STALE) continue;
             if (trk.confidence >= kTaskConfidenceThreshold) continue;
 
@@ -431,8 +493,22 @@ void SimEngine::tick_tasks(int tick, TickHooks& hooks) {
     }
 }
 
-void SimEngine::tick_actions(int tick, TickHooks& hooks) {
-    adjudicate_actions(tick, hooks);
+void SimEngine::tick_support_publication_gate(int tick, TickHooks& hooks) {
+    adjudicate_actions_for_type(tick, hooks, ActionType::DesignateTrack);
+    adjudicate_actions_for_type(tick, hooks, ActionType::ClearDesignation);
+    adjudicate_actions_for_type(tick, hooks, ActionType::RequestBDA);
+}
+
+void SimEngine::tick_reaction_resolution(int tick, TickHooks& hooks) {
+    adjudicate_actions_for_type(tick, hooks, ActionType::EngageTrack);
+
+    // Expire stale designations at end of reaction resolution.
+    designations_.erase(
+        std::remove_if(designations_.begin(), designations_.end(),
+            [tick](const DesignationRecord& d) { return tick >= d.expires_tick; }),
+        designations_.end());
+
+    pending_actions_.clear();
 }
 
 void SimEngine::tick_periodic_snapshots(int tick, TickHooks& hooks) {
@@ -501,19 +577,22 @@ const Scenario::EffectProfile* SimEngine::find_effect_profile(uint32_t index) co
     return &scn_->effect_profiles[index];
 }
 
-void SimEngine::adjudicate_actions(int tick, TickHooks& hooks) {
+void SimEngine::adjudicate_actions_for_type(int tick, TickHooks& hooks, ActionType type) {
     for (const auto& req : pending_actions_) {
+        if (req.type != type)
+            continue;
+
         ActionResult result;
         result.request = req;
         result.tick = tick;
 
         // Look up actor's belief state
-        auto belief_it = beliefs_.find(req.actor);
+        auto belief_it = beliefs_.states().find(req.actor);
 
         switch (req.type) {
         case ActionType::DesignateTrack: {
             // Check that actor has a belief and the track exists
-            if (belief_it == beliefs_.end() ||
+            if (belief_it == beliefs_.states().end() ||
                 !belief_it->second.find_track(req.track_target)) {
                 result.allowed = false;
                 result.failure_mask = static_cast<uint32_t>(GateFailureReason::TrackNotFound);
@@ -552,10 +631,10 @@ void SimEngine::adjudicate_actions(int tick, TickHooks& hooks) {
             const Scenario::EffectProfile* profile = find_effect_profile(req.effect_profile_index);
             ScenarioEntity* target = find_entity(req.track_target);
             const Track* target_track = nullptr;
-            if (belief_it != beliefs_.end())
+            if (belief_it != beliefs_.states().end())
                 target_track = belief_it->second.find_track(req.track_target);
 
-            // Basic engagement gates (runtime state checks)
+            // Basic runtime checks that do not require spatial adjudication.
             uint32_t failure = 0;
             if (!actor || !actor->can_engage)
                 failure |= static_cast<uint32_t>(GateFailureReason::NoCapability);
@@ -567,15 +646,17 @@ void SimEngine::adjudicate_actions(int tick, TickHooks& hooks) {
                 failure |= static_cast<uint32_t>(GateFailureReason::OutOfAmmo);
             if (!target_track)
                 failure |= static_cast<uint32_t>(GateFailureReason::TrackNotFound);
-            if (!target)
-                failure |= static_cast<uint32_t>(GateFailureReason::TrackNotFound);
 
-            // Tactical engagement gates (spatial/policy checks)
-            if (actor && target && target_track) {
+            // Two-stage gating model:
+            //  1) Decision gate uses actor-accessible belief data only.
+            //  2) Truth adjudication runs only if decision gate passed and checks realization truth.
+            uint32_t belief_failure = 0;
+            uint32_t truth_failure = 0;
+
+            if (actor && target_track) {
                 EngagementGateInputs gate_inputs;
                 gate_inputs.actor = actor;
                 gate_inputs.target_track = target_track;
-                gate_inputs.target_truth = target;
                 gate_inputs.effect_profile_index = req.effect_profile_index;
                 gate_inputs.effect_profile = profile;
                 gate_inputs.engagement_rules = scn_ ? &scn_->engagement_rules : nullptr;
@@ -585,14 +666,28 @@ void SimEngine::adjudicate_actions(int tick, TickHooks& hooks) {
                 gate_inputs.world.actor_id = req.actor;
                 gate_inputs.world.track_target_id = req.track_target;
 
-                const EngagementGateResult gate_result = compute_engagement_gates(gate_inputs);
-                failure |= gate_result.failure_mask;
+                const EngagementGateResult belief_gate = compute_engagement_gates(
+                    gate_inputs, EngagementGateStage::DecisionFromBelief);
+                belief_failure = belief_gate.failure_mask;
+                failure |= belief_failure;
+
+                if (belief_failure == 0) {
+                    gate_inputs.target_truth = target;
+                    const EngagementGateResult truth_gate = compute_engagement_gates(
+                        gate_inputs, EngagementGateStage::TruthAdjudication);
+                    truth_failure = truth_gate.failure_mask;
+                    failure |= truth_failure;
+                }
             }
 
             result.failure_mask = failure;
+            result.belief_failure_mask = belief_failure;
+            result.truth_failure_mask = truth_failure;
+            result.rejected_by_belief_gate = (belief_failure != 0);
+            result.rejected_by_truth_adjudication =
+                (belief_failure == 0 && truth_failure != 0);
             result.allowed = (failure == 0);
 
-            // Effect resolution if allowed
             if (result.allowed && actor && profile && target) {
                 EffectOutcome outcome;
                 outcome.request = req;
@@ -642,11 +737,4 @@ void SimEngine::adjudicate_actions(int tick, TickHooks& hooks) {
 
         hooks.on_action_resolved(tick, result);
     }
-    pending_actions_.clear();
-
-    // Expire stale designations
-    designations_.erase(
-        std::remove_if(designations_.begin(), designations_.end(),
-            [tick](const DesignationRecord& d) { return tick >= d.expires_tick; }),
-        designations_.end());
 }

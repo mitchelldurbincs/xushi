@@ -1,35 +1,12 @@
 #include "sim.h"
 #include "sim_engine.h"
 #include "patrol_policy.h"
+#include "world_hash.h"
 #include <memory>
 
 uint64_t compute_world_hash(const std::vector<ScenarioEntity>& entities,
                             const std::map<EntityId, BeliefState>& beliefs) {
-    uint64_t h = 14695981039346656037ULL;
-    auto mix = [&](const void* data, size_t len) {
-        const auto* bytes = static_cast<const uint8_t*>(data);
-        for (size_t i = 0; i < len; ++i) {
-            h ^= bytes[i];
-            h *= 1099511628211ULL;
-        }
-    };
-    for (const auto& e : entities) {
-        mix(&e.id, sizeof(e.id));
-        mix(&e.position.x, sizeof(float));
-        mix(&e.position.y, sizeof(float));
-        mix(&e.current_waypoint, sizeof(e.current_waypoint));
-    }
-    for (const auto& [owner_id, belief] : beliefs) {
-        mix(&owner_id, sizeof(owner_id));
-        for (const auto& t : belief.tracks) {
-            mix(&t.target, sizeof(t.target));
-            mix(&t.estimated_position.x, sizeof(float));
-            mix(&t.estimated_position.y, sizeof(float));
-            mix(&t.confidence, sizeof(float));
-            mix(&t.uncertainty, sizeof(float));
-        }
-    }
-    return h;
+    return compute_world_hash_canonical(entities, beliefs);
 }
 
 struct HeadlessHooks : TickHooks {
@@ -66,12 +43,17 @@ SimResult run_scenario_headless(const Scenario& scn) {
     HeadlessHooks hooks;
     hooks.result = &result;
 
-    for (int tick = 0; tick < scn.ticks; ++tick)
-        engine.step(tick, hooks);
+    for (int tick = 0; tick < scn.ticks; ++tick) {
+        engine.begin_round(tick, hooks);
+        while (!engine.step_activation(tick, hooks)) {
+        }
+        engine.finalize_round(tick, hooks);
+
+        if (engine.has_game_mode() && engine.game_mode_result().finished)
+            break;
+    }
 
     result.stats = engine.stats();
-    result.tasks_assigned = engine.tasks_assigned();
-    result.tasks_completed = engine.tasks_completed();
     result.final_track_count = 0;
     for (const auto& [gid, belief] : engine.get_beliefs())
         result.final_track_count += static_cast<int>(belief.tracks.size());
