@@ -133,6 +133,10 @@ inline JsonValue replay_action_resolved(int tick, const ActionResult& r) {
         {"desig_kind",    json_string(designation_kind_str(r.request.desig_kind))},
         {"allowed",       json_bool(r.allowed)},
         {"failure_mask",  json_number(r.failure_mask)},
+        {"belief_failure_mask",  json_number(r.belief_failure_mask)},
+        {"truth_failure_mask",   json_number(r.truth_failure_mask)},
+        {"rejected_by_belief_gate", json_bool(r.rejected_by_belief_gate)},
+        {"rejected_by_truth_adjudication", json_bool(r.rejected_by_truth_adjudication)},
     });
 }
 

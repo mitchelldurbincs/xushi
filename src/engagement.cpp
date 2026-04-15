@@ -11,7 +11,8 @@ float effect_profile_range(uint32_t effect_profile_index,
 }
 }
 
-EngagementGateResult compute_engagement_gates(const EngagementGateInputs& in) {
+EngagementGateResult compute_engagement_gates(const EngagementGateInputs& in,
+                                              EngagementGateStage stage) {
     EngagementGateResult out;
     const Scenario::EngagementRulesConfig rules =
         in.engagement_rules ? *in.engagement_rules : Scenario::EngagementRulesConfig{};
@@ -70,6 +71,35 @@ EngagementGateResult compute_engagement_gates(const EngagementGateInputs& in) {
     if (static_cast<float>(in.target_track->corroboration_count) < corroboration_threshold)
         out.failure_mask |= static_cast<uint32_t>(GateFailureReason::NeedsCorroboration);
 
+    // Range: use effect profile if available, otherwise fallback formula
+    const float max_effect_range = in.effect_profile
+        ? in.effect_profile->range : effect_profile_range(in.effect_profile_index, rules);
+
+    // Stage 1 (DecisionFromBelief): use only actor-accessible information.
+    // Geometry checks are estimated from the track state (not truth).
+    if (stage == EngagementGateStage::DecisionFromBelief) {
+        const float actor_to_track = (in.target_track->estimated_position - in.actor->position).length();
+        out.debug.actor_to_track_distance = actor_to_track;
+        if (actor_to_track > max_effect_range)
+            out.failure_mask |= static_cast<uint32_t>(GateFailureReason::OutOfRange);
+
+        const bool check_los = in.effect_profile ? in.effect_profile->requires_los : true;
+        if (check_los && in.world.map) {
+            const bool predicted_has_loe =
+                in.world.map->line_of_sight(in.actor->position, in.target_track->estimated_position);
+            out.debug.predicted_line_of_effect = predicted_has_loe;
+            if (!predicted_has_loe)
+                out.failure_mask |= static_cast<uint32_t>(GateFailureReason::NoLineOfEffect);
+        }
+
+        // Decision-phase ROE placeholder (policy known to actor, not truth lookup).
+        const bool roe_allows = true;
+        if (!roe_allows)
+            out.failure_mask |= static_cast<uint32_t>(GateFailureReason::ROEBlocked);
+        return out;
+    }
+
+    // Stage 2 (TruthAdjudication): resolve truth-dependent geometry/policy before realization.
     if (!in.target_truth) {
         out.failure_mask |= static_cast<uint32_t>(GateFailureReason::TrackNotFound);
         return out;
@@ -77,14 +107,9 @@ EngagementGateResult compute_engagement_gates(const EngagementGateInputs& in) {
 
     const float actor_to_target = (in.target_truth->position - in.actor->position).length();
     out.debug.actor_to_truth_distance = actor_to_target;
-
-    // Range: use effect profile if available, otherwise fallback formula
-    const float max_effect_range = in.effect_profile
-        ? in.effect_profile->range : effect_profile_range(in.effect_profile_index, rules);
     if (actor_to_target > max_effect_range)
         out.failure_mask |= static_cast<uint32_t>(GateFailureReason::OutOfRange);
 
-    // Line of effect: use effect profile requires_los if available
     const bool check_los = in.effect_profile ? in.effect_profile->requires_los : true;
     if (check_los && in.world.map) {
         const bool has_loe = in.world.map->line_of_sight(in.actor->position, in.target_truth->position);
@@ -94,23 +119,20 @@ EngagementGateResult compute_engagement_gates(const EngagementGateInputs& in) {
     }
 
     // Protected zone check
-    float protected_zone_distance =
+    const float protected_zone_distance =
         (in.target_truth->position - rules.protected_zone_center).length();
     if (protected_zone_distance <= rules.protected_zone_radius)
         out.failure_mask |= static_cast<uint32_t>(GateFailureReason::ProtectedZone);
 
-    // Same-team engagement prevention (friendly fire)
     if (in.actor->team >= 0 && in.target_truth->team >= 0 &&
         in.actor->team == in.target_truth->team) {
         out.failure_mask |= static_cast<uint32_t>(GateFailureReason::FriendlyTarget);
     }
 
-    // Friendly risk: check if same-team entities are near the target
     if (in.world.entities) {
         for (const auto& entity : *in.world.entities) {
             if (entity.id == in.world.actor_id || entity.id == in.world.track_target_id)
                 continue;
-            // Only flag entities on the same team as the actor (or unaffiliated)
             if (entity.team >= 0 && in.actor->team >= 0 && entity.team != in.actor->team)
                 continue;
             if ((entity.position - in.target_truth->position).length() <=
@@ -121,7 +143,6 @@ EngagementGateResult compute_engagement_gates(const EngagementGateInputs& in) {
         }
     }
 
-    // ROE gate placeholder
     const bool roe_allows = true;
     if (!roe_allows)
         out.failure_mask |= static_cast<uint32_t>(GateFailureReason::ROEBlocked);
