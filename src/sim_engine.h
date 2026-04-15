@@ -126,6 +126,12 @@ public:
     const ScenarioEntity* find_entity(EntityId id) const;
 
 private:
+    struct PendingAction {
+        ActionRequest request;
+        bool pre_rejected = false;
+        ActionResult pre_result;
+    };
+
     struct GridCoord {
         int x = 0;
         int y = 0;
@@ -151,6 +157,10 @@ private:
 
     void require_phase(RoundPhase expected) const;
     void advance_phase(RoundPhase next_phase);
+    ActionActorType resolve_actor_type(const ActionRequest& req, const ScenarioEntity* actor) const;
+    ActionPhaseKind required_phase_kind(ActionType type) const;
+    bool phase_accepts(ActionPhaseKind phase_kind) const;
+    void emit_pre_rejected_actions_for_type(int tick, TickHooks& hooks, ActionType type);
 
     const Scenario* scn_ = nullptr;
     Map map_;
@@ -175,9 +185,12 @@ private:
     GameModeResult last_game_mode_result_;
 
     // Action system
-    std::vector<ActionRequest> pending_actions_;
+    std::vector<PendingAction> pending_actions_;
     std::vector<DesignationRecord> designations_;
     uint64_t next_designation_id_ = 1;
+    std::unordered_map<EntityId, int> operator_ap_remaining_;
+    std::unordered_map<EntityId, bool> one_shot_consumed_;
+    std::unordered_map<int, int> team_support_sap_remaining_;
     std::unordered_map<EntityId, size_t> entity_index_;
     float spatial_cell_size_ = 1.0f;
     std::unordered_map<GridCoord, std::vector<size_t>, GridCoordHash> spatial_bins_;

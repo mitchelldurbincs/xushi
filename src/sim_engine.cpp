@@ -10,6 +10,11 @@
 #include <stdexcept>
 #include <unordered_set>
 
+namespace {
+constexpr int kDefaultOperatorAP = 2;
+constexpr int kDefaultTeamSupportSAP = 3;
+}
+
 size_t SimEngine::GridCoordHash::operator()(const SimEngine::GridCoord& c) const {
     const uint64_t ux = static_cast<uint32_t>(c.x);
     const uint64_t uy = static_cast<uint32_t>(c.y);
@@ -58,6 +63,9 @@ void SimEngine::init(const Scenario& scn, Policy* policy, GameMode* game_mode) {
     pending_actions_.clear();
     designations_.clear();
     next_designation_id_ = 1;
+    operator_ap_remaining_.clear();
+    one_shot_consumed_.clear();
+    team_support_sap_remaining_.clear();
 
     game_mode_ = game_mode;
     last_game_mode_result_ = GameModeResult{};
@@ -80,6 +88,15 @@ void SimEngine::begin_round(int tick, TickHooks& hooks) {
     require_phase(RoundPhase::Idle);
     round_state_.round_tick = tick;
     round_state_.activation_index = 0;
+    operator_ap_remaining_.clear();
+    one_shot_consumed_.clear();
+    team_support_sap_remaining_.clear();
+    for (const auto& entity : entities_) {
+        if (entity.can_engage || entity.can_sense)
+            operator_ap_remaining_[entity.id] = kDefaultOperatorAP;
+        if (entity.team >= 0 && !team_support_sap_remaining_.count(entity.team))
+            team_support_sap_remaining_[entity.team] = kDefaultTeamSupportSAP;
+    }
     advance_phase(RoundPhase::RoundStart);
 
     if (game_mode_)
@@ -520,7 +537,112 @@ void SimEngine::tick_periodic_snapshots(int tick, TickHooks& hooks) {
 }
 
 void SimEngine::submit_action(const ActionRequest& req) {
-    pending_actions_.push_back(req);
+    PendingAction queued;
+    queued.request = req;
+    queued.pre_result.request = req;
+
+    const ScenarioEntity* actor = find_entity(req.actor);
+    const ActionActorType actor_type = resolve_actor_type(req, actor);
+    const ActionPhaseKind expected_phase = required_phase_kind(req.type);
+
+    auto reject = [&](ActionRejectionReason reason, GateFailureReason gate) {
+        queued.pre_rejected = true;
+        queued.pre_result.allowed = false;
+        queued.pre_result.failure_mask |= static_cast<uint32_t>(gate);
+        queued.pre_result.rejection_reasons.push_back(reason);
+    };
+
+    if (!phase_accepts(expected_phase))
+        reject(ActionRejectionReason::IllegalPhase, GateFailureReason::NoCapability);
+
+    if (!actor && actor_type != ActionActorType::TeamSupportController)
+        reject(ActionRejectionReason::InvalidActor, GateFailureReason::NoCapability);
+
+    const bool is_support_action = (expected_phase == ActionPhaseKind::SupportPhase);
+    const bool is_operator_action = (expected_phase == ActionPhaseKind::OperatorActivation);
+
+    if (is_operator_action && actor_type != ActionActorType::Operator)
+        reject(ActionRejectionReason::IllegalActorType, GateFailureReason::NoCapability);
+    if (is_support_action && actor_type == ActionActorType::Operator)
+        reject(ActionRejectionReason::IllegalActorType, GateFailureReason::NoCapability);
+
+    const bool needs_target = (req.type == ActionType::DesignateTrack ||
+                               req.type == ActionType::ClearDesignation ||
+                               req.type == ActionType::EngageTrack ||
+                               req.type == ActionType::RequestBDA);
+    if (needs_target && !find_entity(req.track_target))
+        reject(ActionRejectionReason::InvalidTarget, GateFailureReason::TrackNotFound);
+
+    if (!queued.pre_rejected && is_operator_action) {
+        int& ap = operator_ap_remaining_[req.actor];
+        if (req.operator_def.one_shot && one_shot_consumed_[req.actor]) {
+            reject(ActionRejectionReason::OneShotAlreadyUsed, GateFailureReason::NoCapability);
+        } else if (req.operator_def.ap_cost > ap) {
+            reject(ActionRejectionReason::InsufficientAP, GateFailureReason::NoCapability);
+        } else {
+            ap -= req.operator_def.ap_cost;
+            if (req.operator_def.one_shot)
+                one_shot_consumed_[req.actor] = true;
+        }
+    }
+
+    if (!queued.pre_rejected && is_support_action && req.support_def.spend_team_pool) {
+        int team_id = actor ? actor->team : 0;
+        int& sap = team_support_sap_remaining_[team_id];
+        if (req.support_def.sap_cost > sap) {
+            reject(ActionRejectionReason::InsufficientSAP, GateFailureReason::NoCapability);
+        } else {
+            sap -= req.support_def.sap_cost;
+            (void)req.support_def.initiative_delta;
+        }
+    }
+
+    pending_actions_.push_back(queued);
+}
+
+ActionActorType SimEngine::resolve_actor_type(const ActionRequest& req, const ScenarioEntity* actor) const {
+    if (req.actor_type != ActionActorType::Auto)
+        return req.actor_type;
+    if (!actor)
+        return ActionActorType::TeamSupportController;
+    if (actor->can_engage)
+        return ActionActorType::Operator;
+    if (actor->can_sense)
+        return ActionActorType::Drone;
+    return ActionActorType::Operator;
+}
+
+ActionPhaseKind SimEngine::required_phase_kind(ActionType type) const {
+    switch (type) {
+        case ActionType::EngageTrack:
+            return ActionPhaseKind::OperatorActivation;
+        case ActionType::DesignateTrack:
+        case ActionType::ClearDesignation:
+        case ActionType::RequestBDA:
+            return ActionPhaseKind::SupportPhase;
+    }
+    return ActionPhaseKind::Any;
+}
+
+bool SimEngine::phase_accepts(ActionPhaseKind phase_kind) const {
+    if (round_state_.phase == RoundPhase::Idle)
+        return true;
+    if (phase_kind == ActionPhaseKind::Any)
+        return true;
+    if (phase_kind == ActionPhaseKind::OperatorActivation)
+        return round_state_.phase == RoundPhase::Activations;
+    if (phase_kind == ActionPhaseKind::SupportPhase)
+        return round_state_.phase == RoundPhase::SupportPublicationGate;
+    return false;
+}
+
+void SimEngine::emit_pre_rejected_actions_for_type(int tick, TickHooks& hooks, ActionType type) {
+    for (auto& pending : pending_actions_) {
+        if (!pending.pre_rejected || pending.request.type != type)
+            continue;
+        pending.pre_result.tick = tick;
+        hooks.on_action_resolved(tick, pending.pre_result);
+    }
 }
 
 ScenarioEntity* SimEngine::find_entity(EntityId id) {
@@ -578,7 +700,11 @@ const Scenario::EffectProfile* SimEngine::find_effect_profile(uint32_t index) co
 }
 
 void SimEngine::adjudicate_actions_for_type(int tick, TickHooks& hooks, ActionType type) {
-    for (const auto& req : pending_actions_) {
+    emit_pre_rejected_actions_for_type(tick, hooks, type);
+    for (const auto& pending : pending_actions_) {
+        if (pending.pre_rejected)
+            continue;
+        const auto& req = pending.request;
         if (req.type != type)
             continue;
 
@@ -596,6 +722,7 @@ void SimEngine::adjudicate_actions_for_type(int tick, TickHooks& hooks, ActionTy
                 !belief_it->second.find_track(req.track_target)) {
                 result.allowed = false;
                 result.failure_mask = static_cast<uint32_t>(GateFailureReason::TrackNotFound);
+                result.rejection_reasons.push_back(ActionRejectionReason::InvalidTarget);
             } else {
                 result.allowed = true;
                 DesignationRecord rec;
@@ -624,6 +751,8 @@ void SimEngine::adjudicate_actions_for_type(int tick, TickHooks& hooks, ActionTy
             result.allowed = found;
             if (!found)
                 result.failure_mask = static_cast<uint32_t>(GateFailureReason::TrackNotFound);
+            if (!found)
+                result.rejection_reasons.push_back(ActionRejectionReason::InvalidTarget);
             break;
         }
         case ActionType::EngageTrack: {
@@ -687,6 +816,8 @@ void SimEngine::adjudicate_actions_for_type(int tick, TickHooks& hooks, ActionTy
             result.rejected_by_truth_adjudication =
                 (belief_failure == 0 && truth_failure != 0);
             result.allowed = (failure == 0);
+            if (!result.allowed && has_reason(result.failure_mask, GateFailureReason::TrackNotFound))
+                result.rejection_reasons.push_back(ActionRejectionReason::InvalidTarget);
 
             if (result.allowed && actor && profile && target) {
                 EffectOutcome outcome;
@@ -731,6 +862,7 @@ void SimEngine::adjudicate_actions_for_type(int tick, TickHooks& hooks, ActionTy
         case ActionType::RequestBDA: {
             result.allowed = false;
             result.failure_mask = static_cast<uint32_t>(GateFailureReason::NoCapability);
+            result.rejection_reasons.push_back(ActionRejectionReason::UnsupportedAction);
             break;
         }
         }

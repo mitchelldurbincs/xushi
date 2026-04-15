@@ -127,6 +127,7 @@ void viewer_load(ViewerState& vs, const std::string& replay_path) {
         throw std::runtime_error(header_context + ": expected type == 'header'");
 
     std::string header_scenario_path = get_required_string(hdr, "scenario", header_context);
+    const int replay_version = hdr.has("replay_version") ? get_required_int(hdr, "replay_version", header_context) : 1;
     vs.scenario_path = resolve_scenario_path_from_replay(replay_path, header_scenario_path);
     int header_ticks = get_required_int(hdr, "ticks", header_context);
     double header_dt = get_required_number(hdr, "dt", header_context);
@@ -192,6 +193,8 @@ void viewer_load(ViewerState& vs, const std::string& replay_path) {
             } else if (type == "stats") {
                 vs.frames[tick].stats_snapshot = ev;
             } else if (type == "action_resolved") {
+                if (replay_version >= 2 && ev.has("rejection_reasons"))
+                    get_required_array(ev, "rejection_reasons", 0, context);
                 vs.frames[tick].action_resolved.push_back(ev);
             }
         } catch (const std::exception& ex) {

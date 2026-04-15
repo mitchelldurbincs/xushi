@@ -16,6 +16,7 @@
 inline JsonValue replay_header(const Scenario& scn, const std::string& scenario_path) {
     return json_object({
         {"type",     json_string("header")},
+        {"replay_version", json_number(2)},
         {"scenario", json_string(scenario_path)},
         {"seed",     json_number(static_cast<double>(scn.seed))},
         {"dt",       json_number(scn.dt)},
@@ -124,19 +125,31 @@ inline JsonValue replay_waypoint_arrival(int tick, EntityId id, int waypoint_ind
 }
 
 inline JsonValue replay_action_resolved(int tick, const ActionResult& r) {
+    std::vector<JsonValue> rejection_reasons;
+    for (ActionRejectionReason reason : r.rejection_reasons)
+        rejection_reasons.push_back(json_string(action_rejection_reason_str(reason)));
+
     return json_object({
         {"type",          json_string("action_resolved")},
         {"tick",          json_number(tick)},
         {"actor",         json_number(r.request.actor)},
+        {"actor_type",    json_string(action_actor_type_str(r.request.actor_type))},
         {"action",        json_string(action_type_str(r.request.type))},
+        {"phase_kind",    json_string(action_phase_kind_str(r.request.phase_kind))},
         {"track_target",  json_number(r.request.track_target)},
         {"desig_kind",    json_string(designation_kind_str(r.request.desig_kind))},
+        {"operator_ap_cost", json_number(r.request.operator_def.ap_cost)},
+        {"operator_one_shot", json_bool(r.request.operator_def.one_shot)},
+        {"support_sap_cost", json_number(r.request.support_def.sap_cost)},
+        {"support_spend_team_pool", json_bool(r.request.support_def.spend_team_pool)},
+        {"support_initiative_delta", json_number(r.request.support_def.initiative_delta)},
         {"allowed",       json_bool(r.allowed)},
         {"failure_mask",  json_number(r.failure_mask)},
         {"belief_failure_mask",  json_number(r.belief_failure_mask)},
         {"truth_failure_mask",   json_number(r.truth_failure_mask)},
         {"rejected_by_belief_gate", json_bool(r.rejected_by_belief_gate)},
         {"rejected_by_truth_adjudication", json_bool(r.rejected_by_truth_adjudication)},
+        {"rejection_reasons", json_array(std::move(rejection_reasons))},
     });
 }
 
