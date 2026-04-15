@@ -15,7 +15,7 @@ Multi-agent tactical simulation engine — sensor detection, belief tracking, lo
 - **Movement** — constant velocity, waypoint navigation (loop/stop/branch modes), patrol policies
 - **Task system** — automatic VERIFY task assignment for degraded tracks
 - **Deterministic replay** — NDJSON event log, byte-for-byte identical across runs with same seed
-- **Replay viewer** — optional raylib-based interactive visualization
+- **Headless-first workflows** — deterministic CLI runner plus repeatable batch self-play sweeps
 
 ## Quick Start
 
@@ -44,6 +44,31 @@ build\Release\xushi.exe scenarios\default.json  # Windows
 
 The simulation writes a `.replay` file alongside the scenario (e.g., `scenarios/default.replay`).
 
+### Headless Runner
+
+Use the main `xushi` binary as the default execution path for CI, tuning, and regression runs:
+
+```bash
+# Single scenario (headless simulation)
+./build/xushi scenarios/default.json
+
+# Deterministic benchmark pass for performance tracking
+./build/xushi --bench scenarios/bench/medium.json
+```
+
+### Batch Self-Play Runner (headless)
+
+Use shell loops to run repeated seeded matches and archive logs/replays for analysis:
+
+```bash
+mkdir -p runs/self_play
+for seed in 9001 9013 9029 9049; do
+  out="runs/self_play/medium_${seed}.json"
+  python -c "import json; s=json.load(open('scenarios/bench/medium.json')); s['seed']=${seed}; json.dump(s, open('${out}','w'), indent=2)"
+  ./build/xushi --bench "${out}" > "runs/self_play/bench_${seed}.log"
+done
+```
+
 ### Run Tests
 
 ```bash
@@ -68,6 +93,39 @@ ctest --test-dir build --output-on-failure
 | `mixed_era.json` | Mixed-capability entities on same unit |
 | `patrol_policy.json` | Policy-driven patrol routes |
 | `benchmark_dense.json` | 1000-tick stress test with 5 targets and 8 obstacles |
+| `bench/small.json` | Low-scale benchmark tier (12 entities, 6 obstacles, low sensing density) |
+| `bench/medium.json` | Medium benchmark tier (24 entities, 12 obstacles, moderate sensing density) |
+| `bench/large.json` | Large benchmark tier (48 entities, 24 obstacles, high sensing density) |
+| `bench/xlarge.json` | Extra-large benchmark tier (96 entities, 48 obstacles, very high sensing density/message load) |
+
+### Benchmark Tiering Notes
+
+The `scenarios/bench/*.json` files are designed for scale profiling with all non-scale knobs fixed:
+
+- `dt`, `ticks`, `max_sensor_range`
+- `channel`, `belief`, and `perception` configuration
+- engagement `effect_profiles`
+
+Only these dimensions change per tier:
+
+- total entity count
+- obstacle count
+- sensing density (fraction of entities with `can_sense`)
+
+Each tier uses a deterministic fixed seed:
+
+- `small`: `1103`
+- `medium`: `2203`
+- `large`: `3301`
+- `xlarge`: `4409`
+
+For variance tracking, run the same tier with an additional fixed seed set (for example: `9001`, `9013`, `9029`) by cloning a tier file and changing only `seed`.
+
+Expected growth trends when running `--bench`:
+
+- **Near-linear signs**: movement updates, obstacle iteration, and baseline bookkeeping as entity/obstacle counts scale.
+- **Superlinear signs**: sensing + comm integration can trend superlinear as sensor density rises (more sensor-target pairs and more observation message fan-out to trackers).
+- **Most pronounced jump**: `xlarge` should show the strongest message-pressure effects due to both high entity count and high sensing density.
 
 ### Configuration Reference
 
@@ -229,6 +287,7 @@ src/
   path_resolve.{h,cpp}  replay path resolution
 
 viewer/
+  CMakeLists.txt        optional UI subproject (enabled with XUSHI_ENABLE_VIEWER)
   main.cpp              viewer entry point
   viewer.h              state machine, rendering
   viewer_load.cpp       replay file loading
@@ -236,49 +295,28 @@ viewer/
   viewer_draw.cpp       raylib rendering
 ```
 
-## Viewer
+## Optional Viewer Subproject
 
-Optional interactive replay visualizer. Requires [raylib](https://github.com/raysan5/raylib) 5.5.
+The replay viewer remains available, but it is intentionally isolated from the core build so headless simulation has zero UI dependency surface by default.
 
-**Linux / macOS:**
+- Default configure/build: **does not** touch `viewer/` or raylib.
+- To build viewer explicitly: enable `-DXUSHI_ENABLE_VIEWER=ON`.
+
 ```bash
-git clone --depth 1 --branch 5.5 https://github.com/raysan5/raylib.git /tmp/raylib
-cmake -B /tmp/raylib/build -S /tmp/raylib -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=OFF
-cmake --build /tmp/raylib/build -j$(nproc)
-sudo cmake --install /tmp/raylib/build
-
-# Rebuild xushi (CMake auto-detects raylib)
-cmake -B build -DCMAKE_BUILD_TYPE=Release
+# Linux / macOS
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DXUSHI_ENABLE_VIEWER=ON
 cmake --build build -j$(nproc)
 ./build/xushi_viewer scenarios/default.replay
 ```
 
-**Windows (Visual Studio 2022):**
 ```bash
-git clone --depth 1 --branch 5.5 https://github.com/raysan5/raylib.git raylib-5.5
-cmake -B raylib-5.5/build -S raylib-5.5 -G "Visual Studio 17 2022" -A x64 -DBUILD_EXAMPLES=OFF
-cmake --build raylib-5.5/build --config Release
-cmake --install raylib-5.5/build --config Release --prefix raylib-5.5/install
-
-# Rebuild xushi with raylib prefix
-cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH=<path-to>/raylib-5.5/install
+# Windows (Visual Studio 2022)
+cmake -B build -G "Visual Studio 17 2022" -A x64 -DXUSHI_ENABLE_VIEWER=ON
 cmake --build build --config Release
 build\Release\xushi_viewer.exe scenarios\default.replay
 ```
 
-### Controls
-
-| Key | Action |
-|-----|--------|
-| Space | Play / pause |
-| Left / Right | Step backward / forward (when paused) |
-| + / - | Increase / decrease playback speed |
-| Scroll wheel | Zoom in / out |
-| Right-click drag | Pan camera |
-| R | Toggle sensor range overlay |
-| W | Toggle waypoint path overlay |
-| D | Toggle designation overlay |
-| Timeline bar | Click / drag to scrub |
+If raylib is not installed and `XUSHI_ENABLE_VIEWER=ON` is set, CMake fails fast with a clear error.
 
 ## Testing
 

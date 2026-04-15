@@ -5,8 +5,19 @@
 #include <optional>
 
 // Bounded observation passed to policies. Contains only information the
-// agent can actually know locally — no global state, no other agents' beliefs.
+// agent can actually know locally — no global state, no other agents' beliefs,
+// and no truth-only bookkeeping.
 static constexpr int kMaxPolicyTracks = 8;
+
+struct PolicyTrackObservation {
+    EntityId target;
+    Vec2 estimated_position;
+    float confidence;
+    float uncertainty;
+    TrackStatus status;
+    int class_id = 0;
+    float identity_confidence = 0.0f;
+};
 
 struct PolicyObservation {
     EntityId id;
@@ -15,7 +26,7 @@ struct PolicyObservation {
 
     // Agent's own local tracks (only if can_track), capped at kMaxPolicyTracks.
     // Sorted by confidence descending — highest-priority tracks first.
-    Track local_tracks[kMaxPolicyTracks];
+    PolicyTrackObservation local_tracks[kMaxPolicyTracks];
     int num_tracks = 0;
 };
 

@@ -327,6 +327,62 @@ static void test_friendly_risk_only_flags_same_team(TestContext& ctx) {
           "same-team bystander triggers FriendlyRisk");
 }
 
+static void test_engagement_rules_override_friendly_risk_radius(TestContext& ctx) {
+    Scenario::EffectProfile profile;
+    profile.range = 50.0f;
+    profile.requires_los = false;
+    profile.identity_threshold = 0.0f;
+    profile.corroboration_threshold = 0.0f;
+    profile.ammo_cost = 1;
+
+    Scenario::EngagementRulesConfig rules;
+    rules.friendly_risk_radius = 0.5f;
+
+    ScenarioEntity actor;
+    actor.id = 1;
+    actor.position = {50.0f, 50.0f};
+    actor.can_engage = true;
+    actor.allowed_effect_profile_indices = {0};
+    actor.ammo = 10;
+    actor.team = 0;
+
+    ScenarioEntity target;
+    target.id = 2;
+    target.position = {60.0f, 50.0f};
+    target.team = 1;
+
+    ScenarioEntity friendly_bystander;
+    friendly_bystander.id = 4;
+    friendly_bystander.position = {61.0f, 50.0f};  // 1m from target
+    friendly_bystander.team = 0;
+
+    std::vector<ScenarioEntity> entities = {actor, target, friendly_bystander};
+
+    Track trk;
+    trk.target = 2;
+    trk.status = TrackStatus::FRESH;
+    trk.last_update_tick = 5;
+    trk.uncertainty = 1.0f;
+    trk.identity_confidence = 0.9f;
+    trk.corroboration_count = 2;
+
+    EngagementGateInputs in;
+    in.actor = &actor;
+    in.target_track = &trk;
+    in.target_truth = &target;
+    in.effect_profile_index = 0;
+    in.effect_profile = &profile;
+    in.engagement_rules = &rules;
+    in.world.tick = 5;
+    in.world.actor_id = actor.id;
+    in.world.track_target_id = target.id;
+    in.world.entities = &entities;
+
+    EngagementGateResult out = compute_engagement_gates(in, EngagementGateStage::TruthAdjudication);
+    ctx.check(!has_reason(out.failure_mask, GateFailureReason::FriendlyRisk),
+          "configurable friendly risk radius is honored");
+}
+
 // ── Engagement stop (collision) tests ──
 
 // Helper: build a minimal scenario with two armed attackers facing each other
@@ -519,8 +575,7 @@ static void test_attacker_combat_causes_death(TestContext& ctx) {
 }
 
 int main() {
-    TestContext ctx;
-    std::printf("Running engagement tests...\n");
+    return run_test_suite("engagement", [](TestContext& ctx) {
     test_engagement_gates_include_track_and_truth_failures(ctx);
     test_capable_actor_passes_gates(ctx);
     test_same_team_engagement_rejected(ctx);
@@ -528,13 +583,12 @@ int main() {
     test_cooldown_blocks_engagement(ctx);
     test_out_of_ammo_blocks_engagement(ctx);
     test_friendly_risk_only_flags_same_team(ctx);
-
+    test_engagement_rules_override_friendly_risk_radius(ctx);
     // Engagement stop (collision) tests
     test_engagement_stop_within_range(ctx);
     test_engagement_stop_same_team_ignored(ctx);
     test_dead_entity_skips_movement(ctx);
     test_dead_enemy_does_not_block(ctx);
     test_attacker_combat_causes_death(ctx);
-
-    return ctx.report_and_exit_code();
+    });
 }

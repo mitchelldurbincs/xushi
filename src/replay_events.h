@@ -7,7 +7,6 @@
 #include "action.h"
 #include "scenario.h"
 #include "stats.h"
-#include "task.h"
 #include <cstdint>
 
 // Event factory helpers. Each returns a JsonValue ready to log.
@@ -121,28 +120,6 @@ inline JsonValue replay_waypoint_arrival(int tick, EntityId id, int waypoint_ind
         {"entity",   json_number(id)},
         {"waypoint", json_number(waypoint_index)},
         {"pos",      json_array({json_number(pos.x), json_number(pos.y)})},
-    });
-}
-
-inline JsonValue replay_task_assigned(int tick, const Task& task) {
-    return json_object({
-        {"type",        json_string("task_assigned")},
-        {"tick",        json_number(tick)},
-        {"task_type",   json_string("VERIFY")},
-        {"assigned_to", json_number(task.assigned_to)},
-        {"target_id",   json_number(task.target_id)},
-        {"target_pos",  json_array({json_number(task.target_position.x),
-                                     json_number(task.target_position.y)})},
-    });
-}
-
-inline JsonValue replay_task_completed(int tick, EntityId entity, EntityId target, bool corroborated) {
-    return json_object({
-        {"type",         json_string("task_completed")},
-        {"tick",         json_number(tick)},
-        {"entity",       json_number(entity)},
-        {"target",       json_number(target)},
-        {"corroborated", json_bool(corroborated)},
     });
 }
 
