@@ -84,10 +84,13 @@ static void test_round_phase_order(TestContext& ctx) {
     PhaseOrderHooks hooks;
     engine.step(0, hooks);
 
-    const std::vector<std::string> expected = {
-        "cooldowns", "movement", "sensing", "communication",
-        "belief", "actions", "tasks", "periodic_snapshots"
-    };
+    std::vector<std::string> expected = {"cooldowns"};
+    for (size_t i = 0; i < scn.entities.size(); ++i)
+        expected.push_back("activation");
+    expected.insert(expected.end(), {
+        "support_publication_gate", "communication",
+        "belief", "reaction_resolution", "tasks", "periodic_snapshots"
+    });
 
     ctx.check(hooks.phases == expected, "round phases execute in deterministic contract order");
 }

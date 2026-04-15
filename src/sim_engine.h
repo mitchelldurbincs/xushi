@@ -66,13 +66,40 @@ struct TickHooks {
     virtual void on_task_completed(int /*tick*/, EntityId /*assignee*/, EntityId /*target*/, bool /*corroborated*/) {}
 };
 
-// Shared simulation engine. Owns all mutable tick state.
-// Both headless and CLI paths call init() then step() in a loop.
 class SimEngine {
 public:
+    enum class RoundPhase {
+        Idle,
+        RoundStart,
+        Cooldowns,
+        Activations,
+        SupportPublicationGate,
+        Communication,
+        Belief,
+        ReactionResolution,
+        Tasks,
+        PeriodicSnapshots,
+        RoundEnd
+    };
+
+    struct RoundState {
+        int round_tick = -1;
+        RoundPhase phase = RoundPhase::Idle;
+        size_t activation_index = 0;
+    };
+
     void init(const Scenario& scn, Policy* policy = nullptr,
               GameMode* game_mode = nullptr);
+
+    // Legacy one-shot step API now delegates to explicit round phases.
     void step(int tick, TickHooks& hooks);
+
+    // Round/activation authoritative stepping API.
+    void begin_round(int tick, TickHooks& hooks);
+    bool step_activation(int tick, TickHooks& hooks); // true when all activations done
+    void finalize_round(int tick, TickHooks& hooks);
+
+    const RoundState& round_state() const { return round_state_; }
 
     // Action queue — policies/controllers push requests, engine adjudicates
     void submit_action(const ActionRequest& req);
@@ -84,6 +111,8 @@ public:
     const std::map<EntityId, Task>& get_active_tasks() const { return active_tasks_; }
     SystemStats& stats() { return stats_; }
     const SystemStats& stats() const { return stats_; }
+    int tasks_assigned() const { return tasks_assigned_; }
+    int tasks_completed() const { return tasks_completed_; }
 
     // World hash for determinism checking
     uint64_t compute_world_hash() const;
@@ -94,14 +123,17 @@ public:
 
 private:
     void tick_cooldowns();
-    void tick_movement(int tick, TickHooks& hooks);
-    void tick_sensing(int tick, TickHooks& hooks);
+    void tick_activation(int tick, size_t activation_index, TickHooks& hooks);
     void tick_communication(int tick, TickHooks& hooks, std::vector<Message>& delivered);
     void tick_belief(int tick, TickHooks& hooks, const std::vector<Message>& delivered);
     void tick_tasks(int tick, TickHooks& hooks);
-    void tick_actions(int tick, TickHooks& hooks);
+    void tick_support_publication_gate(int tick, TickHooks& hooks);
+    void tick_reaction_resolution(int tick, TickHooks& hooks);
     void tick_periodic_snapshots(int tick, TickHooks& hooks);
     void move_toward_target(ScenarioEntity& entity, const Vec2& target) const;
+
+    void require_phase(RoundPhase expected) const;
+    void advance_phase(RoundPhase next_phase);
 
     const Scenario* scn_ = nullptr;
     Map map_;
@@ -127,7 +159,9 @@ private:
     std::vector<ActionRequest> pending_actions_;
     std::vector<DesignationRecord> designations_;
     uint64_t next_designation_id_ = 1;
-    void adjudicate_actions(int tick, TickHooks& hooks);
+    void adjudicate_actions_for_type(int tick, TickHooks& hooks, ActionType type);
     ScenarioEntity* find_entity(EntityId id);
     const Scenario::EffectProfile* find_effect_profile(uint32_t index) const;
+
+    RoundState round_state_;
 };

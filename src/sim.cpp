@@ -43,8 +43,15 @@ SimResult run_scenario_headless(const Scenario& scn) {
     HeadlessHooks hooks;
     hooks.result = &result;
 
-    for (int tick = 0; tick < scn.ticks; ++tick)
-        engine.step(tick, hooks);
+    for (int tick = 0; tick < scn.ticks; ++tick) {
+        engine.begin_round(tick, hooks);
+        while (!engine.step_activation(tick, hooks)) {
+        }
+        engine.finalize_round(tick, hooks);
+
+        if (engine.has_game_mode() && engine.game_mode_result().finished)
+            break;
+    }
 
     result.stats = engine.stats();
     result.final_track_count = 0;
