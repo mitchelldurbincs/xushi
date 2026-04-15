@@ -8,6 +8,13 @@
 #include <chrono>
 #include <cmath>
 #include <stdexcept>
+#include <unordered_set>
+
+size_t SimEngine::GridCoordHash::operator()(const SimEngine::GridCoord& c) const {
+    const uint64_t ux = static_cast<uint32_t>(c.x);
+    const uint64_t uy = static_cast<uint32_t>(c.y);
+    return static_cast<size_t>((ux << 32) ^ uy);
+}
 
 // FNV-1a hash of entity positions and belief state.
 uint64_t SimEngine::compute_world_hash() const {
@@ -21,12 +28,21 @@ void SimEngine::init(const Scenario& scn, Policy* policy, GameMode* game_mode) {
 
     sensors_.clear();
     trackers_.clear();
+    trackers_no_team_.clear();
+    trackers_by_team_.clear();
     observables_.clear();
     for (auto& e : entities_) {
         if (e.can_sense)     sensors_.push_back(&e);
-        if (e.can_track)     trackers_.push_back(&e);
+        if (e.can_track) {
+            trackers_.push_back(&e);
+            if (e.team < 0) trackers_no_team_.push_back(&e);
+            else trackers_by_team_[e.team].push_back(&e);
+        }
         if (e.is_observable) observables_.push_back(&e);
     }
+    rebuild_entity_index();
+    spatial_cell_size_ = std::max(kEpsilon, scn.max_sensor_range);
+    rebuild_spatial_bins(spatial_cell_size_);
 
     rng_ = Rng(scn.seed);
     comms_ = CommSystem{};
@@ -129,6 +145,10 @@ void SimEngine::finalize_round(int tick, TickHooks& hooks) {
         const std::chrono::duration<double, std::micro> elapsed = t1 - t0;
         hooks.on_phase_timing(phase, elapsed.count());
     };
+
+    // Spatial bins are referenced by tasking and other spatial queries below;
+    // rebuild once after all activations have updated positions.
+    rebuild_spatial_bins(spatial_cell_size_);
 
     advance_phase(RoundPhase::SupportPublicationGate);
     run_phase("support_publication_gate", [&] { tick_support_publication_gate(tick, hooks); });
@@ -402,12 +422,10 @@ void SimEngine::tick_belief(int tick, TickHooks& hooks, const std::vector<Messag
 }
 
 void SimEngine::tick_tasks(int tick, TickHooks& hooks) {
+    const Scenario& scn = *scn_;
     std::vector<EntityId> completed_tasks;
     for (const auto& [eid, task] : active_tasks_) {
-        ScenarioEntity* assigned = nullptr;
-        for (auto& e : entities_) {
-            if (e.id == eid) { assigned = &e; break; }
-        }
+        ScenarioEntity* assigned = find_entity(eid);
         if (!assigned) continue;
 
         Vec2 diff = task.target_position - assigned->position;
@@ -444,15 +462,21 @@ void SimEngine::tick_tasks(int tick, TickHooks& hooks) {
 
             ScenarioEntity* best = nullptr;
             float best_dist = kInfDistance;
-            for (auto& e : entities_) {
-                if (!e.can_sense) continue;
-                if (active_tasks_.count(e.id)) continue;
-                float d = (e.position - trk.estimated_position).length();
-                if (d < best_dist) {
-                    best = &e;
-                    best_dist = d;
-                }
-            }
+            const auto try_candidates = [&](float range) {
+                for_each_candidate_in_range(trk.estimated_position, range, [&](size_t idx) {
+                    auto& e = entities_[idx];
+                    if (!e.can_sense) return;
+                    if (active_tasks_.count(e.id)) return;
+                    float d = (e.position - trk.estimated_position).length();
+                    if (d < best_dist) {
+                        best = &e;
+                        best_dist = d;
+                    }
+                });
+            };
+            try_candidates(scn.max_sensor_range);
+            if (!best)
+                try_candidates(kInfDistance);
 
             if (best) {
                 Task task;
@@ -500,11 +524,51 @@ void SimEngine::submit_action(const ActionRequest& req) {
 }
 
 ScenarioEntity* SimEngine::find_entity(EntityId id) {
-    for (auto& e : entities_) {
-        if (e.id == id)
-            return &e;
+    auto it = entity_index_.find(id);
+    return it == entity_index_.end() ? nullptr : &entities_[it->second];
+}
+
+const ScenarioEntity* SimEngine::find_entity(EntityId id) const {
+    auto it = entity_index_.find(id);
+    return it == entity_index_.end() ? nullptr : &entities_[it->second];
+}
+
+void SimEngine::rebuild_entity_index() {
+    entity_index_.clear();
+    entity_index_.reserve(entities_.size());
+    for (size_t i = 0; i < entities_.size(); ++i)
+        entity_index_[entities_[i].id] = i;
+}
+
+void SimEngine::rebuild_spatial_bins(float cell_size) {
+    spatial_bins_.clear();
+    if (cell_size <= kEpsilon) return;
+    for (size_t i = 0; i < entities_.size(); ++i) {
+        const Vec2 p = entities_[i].position;
+        const int gx = static_cast<int>(std::floor(p.x / cell_size));
+        const int gy = static_cast<int>(std::floor(p.y / cell_size));
+        spatial_bins_[GridCoord{gx, gy}].push_back(i);
     }
-    return nullptr;
+}
+
+void SimEngine::for_each_candidate_in_range(const Vec2& center, float range,
+                                            const std::function<void(size_t)>& fn) const {
+    // Fallback: empty bins, invalid cell size, non-finite range, or very large range
+    if (spatial_bins_.empty() || spatial_cell_size_ <= kEpsilon || !std::isfinite(range) || range >= kInfDistance / 2) {
+        for (size_t i = 0; i < entities_.size(); ++i) fn(i);
+        return;
+    }
+    const int cx = static_cast<int>(std::floor(center.x / spatial_cell_size_));
+    const int cy = static_cast<int>(std::floor(center.y / spatial_cell_size_));
+    const int radius_cells = static_cast<int>(std::ceil(range / spatial_cell_size_));
+    for (int dx = -radius_cells; dx <= radius_cells; ++dx) {
+        for (int dy = -radius_cells; dy <= radius_cells; ++dy) {
+            auto it = spatial_bins_.find(GridCoord{cx + dx, cy + dy});
+            if (it == spatial_bins_.end()) continue;
+            for (size_t idx : it->second)
+                fn(idx);
+        }
+    }
 }
 
 const Scenario::EffectProfile* SimEngine::find_effect_profile(uint32_t index) const {

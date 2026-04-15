@@ -284,11 +284,7 @@ int main(int argc, char* argv[]) {
             if (bit == engine.get_beliefs().end()) continue;
             for (const auto& trk : bit->second.tracks) {
                 if (trk.status != TrackStatus::FRESH) continue;
-                // Find target entity to check team
-                const ScenarioEntity* target_ent = nullptr;
-                for (const auto& te : engine.get_entities()) {
-                    if (te.id == trk.target) { target_ent = &te; break; }
-                }
+                const ScenarioEntity* target_ent = engine.find_entity(trk.target);
                 // Skip same-team targets
                 if (target_ent && e.team >= 0 && target_ent->team >= 0 &&
                     e.team == target_ent->team)
