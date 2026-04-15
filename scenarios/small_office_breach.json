@@ -1,0 +1,47 @@
+{
+  "seed": 1103,
+  "rounds": 12,
+  "map": {
+    "rows": [
+      "WWWWWWWWWWWWWWWW",
+      "W..............W",
+      "W...........WWWW",
+      "W..............W",
+      "W...........WWWW",
+      "W..............W",
+      "W..............W",
+      "W..............W",
+      "W......WWW.....W",
+      "W......W.C.....W",
+      "W..............W",
+      "WWWWWWWWWWWWWWWW"
+    ],
+    "doors": [
+      { "a": [11, 3], "b": [12, 3], "state": "closed" }
+    ]
+  },
+  "devices": [
+    { "id": 1, "kind": "camera",   "pos": [9, 6], "team": -1, "facing": "E", "range": 6 },
+    { "id": 2, "kind": "terminal", "pos": [13, 3], "team": -1 },
+    { "id": 3, "kind": "light",    "pos": [13, 9], "team": -1, "lights_on": true }
+  ],
+  "entities": [
+    { "id": 0,  "kind": "operator", "name": "attacker_a", "pos": [1, 2],  "team": 0, "hp": 100, "max_hp": 100, "max_ap": 3, "ammo": 10 },
+    { "id": 1,  "kind": "operator", "name": "attacker_b", "pos": [1, 9],  "team": 0, "hp": 100, "max_hp": 100, "max_ap": 3, "ammo": 10 },
+    { "id": 2,  "kind": "drone",    "name": "attacker_drone", "pos": [1, 2], "team": 0, "hp": 1, "max_hp": 1, "battery": 8, "vision_range": 6, "move_range": 3, "deployed": false },
+
+    { "id": 10, "kind": "operator", "name": "defender_a", "pos": [10, 3], "team": 1, "hp": 100, "max_hp": 100, "max_ap": 3, "ammo": 10 },
+    { "id": 11, "kind": "operator", "name": "defender_b", "pos": [13, 9], "team": 1, "hp": 100, "max_hp": 100, "max_ap": 3, "ammo": 10 },
+    { "id": 12, "kind": "drone",    "name": "defender_drone", "pos": [13, 9], "team": 1, "hp": 1, "max_hp": 1, "battery": 8, "vision_range": 6, "move_range": 3, "deployed": false }
+  ],
+  "belief": {
+    "fresh_rounds": 2,
+    "stale_rounds": 4,
+    "uncertainty_growth_per_round": 1.0,
+    "confidence_decay_per_round": 0.15
+  },
+  "game_mode": {
+    "type": "office_breach",
+    "objective_cell": [13, 3]
+  }
+}

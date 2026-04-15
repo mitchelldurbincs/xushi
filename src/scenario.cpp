@@ -1,5 +1,7 @@
 #include "scenario.h"
+
 #include "json.h"
+
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -7,399 +9,194 @@
 
 namespace {
 
-std::runtime_error make_field_error(const std::string& path,
-                                    const std::string& field,
-                                    const std::string& message) {
+std::runtime_error field_error(const std::string& path,
+                               const std::string& field,
+                               const std::string& message) {
     return std::runtime_error(
         "invalid scenario '" + path + "': " + field + " " + message);
 }
 
-template <typename T>
-std::string to_string_value(T value) {
-    std::ostringstream oss;
-    oss << value;
-    return oss.str();
+GridPos parse_cell(const JsonValue& v) {
+    const auto& arr = v.as_array();
+    if (arr.size() != 2)
+        throw std::runtime_error("grid cell must be [x, y]");
+    return GridPos{static_cast<int16_t>(arr[0].as_int()),
+                   static_cast<int16_t>(arr[1].as_int())};
 }
 
-template <typename T>
-void validate_non_negative(const std::string& path,
-                           const char* field_name,
-                           T value) {
-    if (value < static_cast<T>(0)) {
-        throw make_field_error(path, field_name,
-                               "must be >= 0, got " + to_string_value(value));
-    }
+Facing parse_facing(const std::string& s) {
+    if (s == "N" || s == "north") return Facing::North;
+    if (s == "E" || s == "east")  return Facing::East;
+    if (s == "S" || s == "south") return Facing::South;
+    if (s == "W" || s == "west")  return Facing::West;
+    throw std::runtime_error("unknown facing: " + s);
 }
 
-template <typename T>
-void validate_positive(const std::string& path,
-                       const char* field_name,
-                       T value) {
-    if (value <= static_cast<T>(0)) {
-        throw make_field_error(path, field_name,
-                               "must be > 0, got " + to_string_value(value));
-    }
+DoorState parse_door_state(const std::string& s) {
+    if (s == "open")   return DoorState::OPEN;
+    if (s == "closed") return DoorState::CLOSED;
+    if (s == "locked") return DoorState::LOCKED;
+    throw std::runtime_error("unknown door state: " + s);
 }
 
-void parse_top_level_config(const JsonValue& root, Scenario& s) {
-    s.seed = static_cast<uint64_t>(root["seed"].as_number());
-    s.dt = static_cast<float>(root.number_or("dt", 1.0));
-    s.ticks = root.int_or("ticks", 100);
-    s.max_sensor_range = static_cast<float>(root.number_or("max_sensor_range", 80.0));
+DeviceKind parse_device_kind(const std::string& s) {
+    if (s == "camera")   return DeviceKind::Camera;
+    if (s == "relay")    return DeviceKind::Relay;
+    if (s == "terminal") return DeviceKind::Terminal;
+    if (s == "light")    return DeviceKind::Light;
+    throw std::runtime_error("unknown device kind: " + s);
+}
 
-    for (const auto& obs : root["obstacles"].as_array()) {
-        const auto& mn = obs["min"].as_array();
-        const auto& mx = obs["max"].as_array();
-        Rect r;
-        r.min = {static_cast<float>(mn[0].as_number()),
-                 static_cast<float>(mn[1].as_number())};
-        r.max = {static_cast<float>(mx[0].as_number()),
-                 static_cast<float>(mx[1].as_number())};
-        s.obstacles.push_back(r);
-    }
+void parse_map(const std::string& path, const JsonValue& root, Scenario& s) {
+    if (!root.has("map"))
+        throw field_error(path, "map", "is required");
+    const auto& m = root["map"];
+    if (!m.has("rows"))
+        throw field_error(path, "map.rows", "is required (array of strings)");
+    const auto& rows = m["rows"].as_array();
+    s.ascii_map.clear();
+    for (const auto& r : rows)
+        s.ascii_map.push_back(r.as_string());
+    s.grid = GridMap::from_ascii(s.ascii_map);
 
-    if (root.has("channel")) {
-        const auto& ch = root["channel"];
-        s.channel.base_latency_ticks = ch.int_or("base_latency", 3);
-        s.channel.latency_per_distance = static_cast<float>(ch.number_or("per_distance", 0.0));
-        s.channel.loss_probability = static_cast<float>(ch.number_or("loss", 0.1));
-    }
-
-    if (root.has("belief")) {
-        const auto& b = root["belief"];
-        s.belief.fresh_ticks = b.int_or("fresh_ticks", 5);
-        s.belief.stale_ticks = b.int_or("stale_ticks", 10);
-        s.belief.uncertainty_growth_per_second = static_cast<float>(
-            b.number_or("uncertainty_growth_per_second",
-                        b.number_or("uncertainty_growth", 0.5)));
-        s.belief.confidence_decay_per_second = static_cast<float>(
-            b.number_or("confidence_decay_per_second",
-                        b.number_or("confidence_decay", 0.05)));
-        s.belief.negative_evidence_factor = static_cast<float>(
-            b.number_or("negative_evidence_factor", 0.3));
-    }
-
-    if (root.has("perception")) {
-        const auto& p = root["perception"];
-        s.perception.miss_rate = static_cast<float>(p.number_or("miss_rate", 0.0));
-        s.perception.false_positive_rate = static_cast<float>(p.number_or("false_positive_rate", 0.0));
-        s.perception.class_confusion_rate = static_cast<float>(p.number_or("class_confusion_rate", 0.0));
-    }
-
-    if (root.has("engagement_rules")) {
-        const auto& er = root["engagement_rules"];
-        if (er.has("protected_zone_center")) {
-            const auto& center = er["protected_zone_center"].as_array();
-            s.engagement_rules.protected_zone_center = {
-                static_cast<float>(center[0].as_number()),
-                static_cast<float>(center[1].as_number())
-            };
-        }
-        s.engagement_rules.protected_zone_radius = static_cast<float>(
-            er.number_or("protected_zone_radius", s.engagement_rules.protected_zone_radius));
-        s.engagement_rules.friendly_risk_radius = static_cast<float>(
-            er.number_or("friendly_risk_radius", s.engagement_rules.friendly_risk_radius));
-        s.engagement_rules.default_effect_range = static_cast<float>(
-            er.number_or("default_effect_range", s.engagement_rules.default_effect_range));
-        s.engagement_rules.effect_range_step = static_cast<float>(
-            er.number_or("effect_range_step", s.engagement_rules.effect_range_step));
-        s.engagement_rules.max_track_uncertainty = static_cast<float>(
-            er.number_or("max_track_uncertainty", s.engagement_rules.max_track_uncertainty));
-        s.engagement_rules.min_identity_confidence = static_cast<float>(
-            er.number_or("min_identity_confidence", s.engagement_rules.min_identity_confidence));
-        s.engagement_rules.min_corroboration_count = er.int_or(
-            "min_corroboration_count", s.engagement_rules.min_corroboration_count);
-    }
-
-    if (root.has("game_mode")) {
-        const auto& gm = root["game_mode"];
-        s.game_mode_config.type = gm["type"].as_string();
-        if (gm.has("assets")) {
-            for (const auto& a : gm["assets"].as_array())
-                s.game_mode_config.asset_entity_ids.push_back(a.as_int());
+    if (m.has("doors")) {
+        for (const auto& d : m["doors"].as_array()) {
+            GridPos a = parse_cell(d["a"]);
+            GridPos b = parse_cell(d["b"]);
+            DoorState st = DoorState::CLOSED;
+            if (d.has("state"))
+                st = parse_door_state(d["state"].as_string());
+            s.grid.add_door(a, b, st);
         }
     }
-}
-
-void parse_effect_profiles(const JsonValue& root, Scenario& s) {
-    if (!root.has("effect_profiles"))
-        return;
-
-    const auto& profiles = root["effect_profiles"].as_array();
-    for (const auto& profile : profiles) {
-        Scenario::EffectProfile p;
-        p.name = profile["name"].as_string();
-        p.range = static_cast<float>(profile["range"].as_number());
-        if (profile.has("requires_los"))
-            p.requires_los = profile["requires_los"].as_bool();
-        p.identity_threshold = static_cast<float>(
-            profile.number_or("identity_threshold", 0.0));
-        p.corroboration_threshold = static_cast<float>(
-            profile.number_or("corroboration_threshold", 0.0));
-        p.cooldown_ticks = profile.int_or("cooldown_ticks", 0);
-        p.ammo_cost = profile.int_or("ammo_cost", 0);
-
-        p.hit_probability = static_cast<float>(profile.number_or("hit_probability", 1.0));
-        p.vitality_delta_min = profile.int_or("vitality_delta_min", 0);
-        p.vitality_delta_max = profile.int_or("vitality_delta_max", p.vitality_delta_min);
-
-        if (profile.has("roe_flags")) {
-            for (const auto& flag : profile["roe_flags"].as_array())
-                p.roe_flags.push_back(flag.as_string());
-        }
-        s.effect_profiles.push_back(p);
-    }
+    s.grid.recompute_rooms();
 }
 
 void parse_entities(const std::string& path, const JsonValue& root, Scenario& s) {
-    std::unordered_set<EntityId> seen_ids;
+    if (!root.has("entities"))
+        throw field_error(path, "entities", "is required");
+    std::unordered_set<EntityId> seen;
+    for (const auto& e : root["entities"].as_array()) {
+        ScenarioEntity ent;
+        ent.id = static_cast<EntityId>(e["id"].as_int());
+        if (!seen.insert(ent.id).second)
+            throw field_error(path, "entities.id",
+                              "duplicate id " + std::to_string(ent.id));
+        ent.role_name = e.has("name") ? e["name"].as_string() : "";
+        std::string kind = e.has("kind") ? e["kind"].as_string() : "operator";
+        if (kind == "operator")      ent.kind = EntityKind::Operator;
+        else if (kind == "drone")    ent.kind = EntityKind::Drone;
+        else throw field_error(path, "entities.kind", "unknown '" + kind + "'");
+        ent.pos = parse_cell(e["pos"]);
+        ent.team = e["team"].as_int();
 
-    const auto& entities = root["entities"].as_array();
-    for (size_t i = 0; i < entities.size(); ++i) {
-        const auto& ent = entities[i];
-        ScenarioEntity e;
-        e.id = static_cast<EntityId>(ent["id"].as_number());
-        if (!seen_ids.insert(e.id).second) {
-            throw make_field_error(path,
-                                   "entities[" + std::to_string(i) + "].id",
-                                   "duplicate entity id " + std::to_string(e.id));
+        if (e.has("hp"))           ent.hp = e["hp"].as_int();
+        if (e.has("max_hp"))       ent.max_hp = e["max_hp"].as_int();
+        if (e.has("max_ap"))       ent.max_ap = e["max_ap"].as_int();
+        if (e.has("ammo"))         ent.ammo = e["ammo"].as_int();
+        if (e.has("vision_range")) ent.vision_range = e["vision_range"].as_int();
+        if (e.has("weapon_range")) ent.weapon_range = e["weapon_range"].as_int();
+        if (e.has("weapon_base_hit"))
+            ent.weapon_base_hit = static_cast<float>(e["weapon_base_hit"].as_number());
+        if (e.has("weapon_damage")) ent.weapon_damage = e["weapon_damage"].as_int();
+
+        if (ent.kind == EntityKind::Drone) {
+            if (e.has("battery"))        ent.drone_battery = e["battery"].as_int();
+            if (e.has("vision_range"))   ent.drone_vision_range = e["vision_range"].as_int();
+            if (e.has("move_range"))     ent.drone_move_range = e["move_range"].as_int();
+            if (e.has("deployed"))       ent.drone_deployed = e["deployed"].as_bool();
         }
-
-        e.role_name = ent["type"].as_string();
-        const auto& p = ent["pos"].as_array();
-        e.position = {static_cast<float>(p[0].as_number()),
-                      static_cast<float>(p[1].as_number())};
-        const auto& v = ent["vel"].as_array();
-        e.velocity = {static_cast<float>(v[0].as_number()),
-                      static_cast<float>(v[1].as_number())};
-
-        if (ent.has("can_sense"))     e.can_sense = ent["can_sense"].as_bool();
-        if (ent.has("can_track"))     e.can_track = ent["can_track"].as_bool();
-        if (ent.has("is_observable")) e.is_observable = ent["is_observable"].as_bool();
-        if (ent.has("can_engage"))    e.can_engage = ent["can_engage"].as_bool();
-
-        if (ent.has("team"))      e.team = ent["team"].as_int();
-        if (ent.has("class_id"))  e.class_id = ent["class_id"].as_int();
-
-        if (ent.has("max_vitality")) e.max_vitality = ent["max_vitality"].as_int();
-        if (ent.has("vitality"))     e.vitality = ent["vitality"].as_int();
-        if (e.vitality > e.max_vitality)
-            e.vitality = e.max_vitality;
-
-        if (ent.has("ammo")) e.ammo = ent["ammo"].as_int();
-        if (ent.has("cooldown_ticks_remaining"))
-            e.cooldown_ticks_remaining = ent["cooldown_ticks_remaining"].as_int();
-        if (ent.has("allowed_effect_profile_indices")) {
-            for (const auto& idx : ent["allowed_effect_profile_indices"].as_array())
-                e.allowed_effect_profile_indices.push_back(idx.as_int());
-        }
-
-        if (ent.has("waypoints")) {
-            const auto& wps = ent["waypoints"].as_array();
-            if (wps.empty()) {
-                throw std::runtime_error("entity " + std::to_string(e.id) +
-                                         " has waypoints key but empty list");
-            }
-            for (const auto& wp : wps) {
-                const auto& coords = wp.as_array();
-                e.waypoints.push_back({
-                    static_cast<float>(coords[0].as_number()),
-                    static_cast<float>(coords[1].as_number())
-                });
-            }
-            e.speed = static_cast<float>(ent["speed"].as_number());
-            validate_positive(path, "entity speed", e.speed);
-
-            if (ent.has("waypoint_mode")) {
-                std::string mode_str = ent["waypoint_mode"].as_string();
-                if (mode_str == "stop")
-                    e.waypoint_mode = ScenarioEntity::WaypointMode::Stop;
-                else if (mode_str == "loop")
-                    e.waypoint_mode = ScenarioEntity::WaypointMode::Loop;
-                else
-                    throw std::runtime_error("unknown waypoint_mode '" + mode_str +
-                                             "' for entity id " + std::to_string(e.id));
-            }
-
-            if (ent.has("branch_points")) {
-                const auto& bp = ent["branch_points"].as_object();
-                for (const auto& [key, val] : bp) {
-                    int wp_idx = std::stoi(key);
-                    if (wp_idx < 0 || wp_idx >= static_cast<int>(e.waypoints.size()))
-                        throw std::runtime_error("branch_points index " + key +
-                                                 " out of range for entity " + std::to_string(e.id));
-                    std::vector<int> successors;
-                    for (const auto& s_val : val.as_array()) {
-                        int succ = s_val.as_int();
-                        if (succ < 0 || succ >= static_cast<int>(e.waypoints.size()))
-                            throw std::runtime_error("branch successor " + std::to_string(succ) +
-                                                     " out of range for entity " + std::to_string(e.id));
-                        successors.push_back(succ);
-                    }
-                    e.branch_points[wp_idx] = successors;
-                }
-            }
-        }
-
-        if (e.waypoints.empty() && ent.has("speed")) {
-            e.speed = static_cast<float>(ent["speed"].as_number());
-            validate_positive(path, "entity speed", e.speed);
-        }
-
-        s.entities.push_back(e);
+        s.entities.push_back(ent);
     }
 }
 
-void parse_policy_config(const JsonValue& root, Scenario& s) {
-    if (!root.has("policy"))
-        return;
-
-    const auto& pol = root["policy"];
-    s.policy_config.type = pol["type"].as_string();
-    if (s.policy_config.type == "patrol") {
-        if (!pol.has("routes"))
-            throw std::runtime_error("patrol policy requires 'routes' object");
-        const auto& routes = pol["routes"].as_object();
-        for (const auto& [key, val] : routes) {
-            EntityId eid = static_cast<EntityId>(std::stoi(key));
-            std::vector<Vec2> waypoints;
-            for (const auto& wp : val.as_array()) {
-                const auto& coords = wp.as_array();
-                waypoints.push_back({
-                    static_cast<float>(coords[0].as_number()),
-                    static_cast<float>(coords[1].as_number())
-                });
-            }
-            if (waypoints.empty())
-                throw std::runtime_error("patrol route for entity " + key + " is empty");
-            s.policy_config.patrol_routes[eid] = waypoints;
-        }
-    } else if (s.policy_config.type != "null" && !s.policy_config.type.empty()) {
-        throw std::runtime_error("unknown policy type '" + s.policy_config.type + "'");
+void parse_devices(const JsonValue& root, Scenario& s) {
+    if (!root.has("devices")) return;
+    uint32_t auto_id = 1;
+    for (const auto& d : root["devices"].as_array()) {
+        Device dev;
+        dev.id = d.has("id") ? static_cast<uint32_t>(d["id"].as_int()) : auto_id++;
+        dev.kind = parse_device_kind(d["kind"].as_string());
+        dev.pos = parse_cell(d["pos"]);
+        if (d.has("team")) dev.team = d["team"].as_int();
+        if (d.has("facing")) dev.facing = parse_facing(d["facing"].as_string());
+        if (d.has("range")) dev.range = d["range"].as_int();
+        if (d.has("lights_on")) dev.lights_on = d["lights_on"].as_bool();
+        s.devices.push_back(dev);
     }
 }
 
-void validate_scenario(const std::string& path, const Scenario& s) {
-    validate_non_negative(path, "ticks", s.ticks);
-    validate_positive(path, "dt", s.dt);
-    validate_positive(path, "max_sensor_range", s.max_sensor_range);
-    validate_non_negative(path, "channel.base_latency_ticks", s.channel.base_latency_ticks);
-    validate_non_negative(path, "channel.latency_per_distance", s.channel.latency_per_distance);
-    if (s.channel.loss_probability < 0.0f || s.channel.loss_probability > 1.0f) {
-        throw make_field_error(path, "channel.loss_probability",
-                               "must be in [0, 1], got " + to_string_value(s.channel.loss_probability));
-    }
-    validate_non_negative(path, "belief.fresh_ticks", s.belief.fresh_ticks);
-    validate_non_negative(path, "belief.stale_ticks", s.belief.stale_ticks);
-    validate_non_negative(path, "belief.uncertainty_growth_per_second",
-                          s.belief.uncertainty_growth_per_second);
-    validate_non_negative(path, "belief.confidence_decay_per_second",
-                          s.belief.confidence_decay_per_second);
-    if (s.belief.negative_evidence_factor < 0.0f || s.belief.negative_evidence_factor > 1.0f) {
-        throw make_field_error(path, "belief.negative_evidence_factor",
-                               "must be in [0, 1], got " + to_string_value(s.belief.negative_evidence_factor));
-    }
-
-    validate_non_negative(path, "perception.miss_rate", s.perception.miss_rate);
-    validate_non_negative(path, "perception.false_positive_rate", s.perception.false_positive_rate);
-    validate_non_negative(path, "perception.class_confusion_rate", s.perception.class_confusion_rate);
-    validate_non_negative(path, "engagement_rules.protected_zone_radius",
-                          s.engagement_rules.protected_zone_radius);
-    validate_non_negative(path, "engagement_rules.friendly_risk_radius",
-                          s.engagement_rules.friendly_risk_radius);
-    validate_non_negative(path, "engagement_rules.default_effect_range",
-                          s.engagement_rules.default_effect_range);
-    validate_non_negative(path, "engagement_rules.effect_range_step",
-                          s.engagement_rules.effect_range_step);
-    validate_non_negative(path, "engagement_rules.max_track_uncertainty",
-                          s.engagement_rules.max_track_uncertainty);
-    validate_non_negative(path, "engagement_rules.min_corroboration_count",
-                          s.engagement_rules.min_corroboration_count);
-    if (s.engagement_rules.min_identity_confidence < 0.0f ||
-        s.engagement_rules.min_identity_confidence > 1.0f) {
-        throw make_field_error(path, "engagement_rules.min_identity_confidence",
-                               "must be in [0, 1], got " +
-                                   to_string_value(s.engagement_rules.min_identity_confidence));
-    }
-
-    for (size_t i = 0; i < s.effect_profiles.size(); ++i) {
-        const auto& p = s.effect_profiles[i];
-        const std::string prefix = "effect_profiles[" + std::to_string(i) + "]";
-        if (p.hit_probability < 0.0f || p.hit_probability > 1.0f) {
-            throw make_field_error(path, prefix + ".hit_probability",
-                                   "must be in [0, 1], got " + to_string_value(p.hit_probability));
-        }
-        if (p.vitality_delta_min > p.vitality_delta_max) {
-            throw make_field_error(path, prefix + ".vitality_delta",
-                                   "min > max is invalid");
-        }
-        if (p.cooldown_ticks < 0) {
-            throw make_field_error(path, prefix + ".cooldown_ticks",
-                                   "must be >= 0, got " + std::to_string(p.cooldown_ticks));
-        }
-        if (p.ammo_cost < 0) {
-            throw make_field_error(path, prefix + ".ammo_cost",
-                                   "must be >= 0, got " + std::to_string(p.ammo_cost));
-        }
-    }
-
-    int sensor_count = 0;
-    int tracker_count = 0;
-    int observable_count = 0;
-    for (size_t i = 0; i < s.entities.size(); ++i) {
-        const auto& e = s.entities[i];
-        if (e.can_sense) ++sensor_count;
-        if (e.can_track) ++tracker_count;
-        if (e.is_observable) ++observable_count;
-
-        const std::string eprefix =
-            "entities[" + std::to_string(i) + "] (id=" + std::to_string(e.id) + ")";
-        if (e.ammo < 0) {
-            throw make_field_error(path, eprefix + ".ammo",
-                                   "must be >= 0, got " + std::to_string(e.ammo));
-        }
-        if (e.cooldown_ticks_remaining < 0) {
-            throw make_field_error(path, eprefix + ".cooldown_ticks_remaining",
-                                   "must be >= 0, got " +
-                                       std::to_string(e.cooldown_ticks_remaining));
-        }
-        for (size_t j = 0; j < e.allowed_effect_profile_indices.size(); ++j) {
-            const int idx = e.allowed_effect_profile_indices[j];
-            if (idx < 0 || idx >= static_cast<int>(s.effect_profiles.size())) {
-                throw make_field_error(
-                    path,
-                    eprefix + ".allowed_effect_profile_indices[" + std::to_string(j) + "]",
-                    "references effect_profiles[" + std::to_string(idx) +
-                        "] but valid range is [0, " +
-                        std::to_string(static_cast<int>(s.effect_profiles.size()) - 1) + "]");
-            }
-        }
-    }
-
-    if (sensor_count == 0)
-        throw std::runtime_error("scenario validation failed: no entity with sensing capability");
-    if (tracker_count == 0)
-        throw std::runtime_error("scenario validation failed: no entity with tracking capability");
-    if (observable_count == 0)
-        throw std::runtime_error("scenario validation failed: no observable entity");
+void parse_belief_config(const JsonValue& root, Scenario& s) {
+    if (!root.has("belief")) return;
+    const auto& b = root["belief"];
+    if (b.has("fresh_rounds"))
+        s.belief.fresh_rounds = b["fresh_rounds"].as_int();
+    if (b.has("stale_rounds"))
+        s.belief.stale_rounds = b["stale_rounds"].as_int();
+    if (b.has("uncertainty_growth_per_round"))
+        s.belief.uncertainty_growth_per_round =
+            static_cast<float>(b["uncertainty_growth_per_round"].as_number());
+    if (b.has("confidence_decay_per_round"))
+        s.belief.confidence_decay_per_round =
+            static_cast<float>(b["confidence_decay_per_round"].as_number());
 }
 
-} // namespace
+void parse_game_mode(const JsonValue& root, Scenario& s) {
+    if (!root.has("game_mode")) return;
+    const auto& gm = root["game_mode"];
+    s.game_mode.type = gm["type"].as_string();
+    if (gm.has("objective_cell"))
+        s.game_mode.objective_cell = parse_cell(gm["objective_cell"]);
+    if (gm.has("assets"))
+        for (const auto& a : gm["assets"].as_array())
+            s.game_mode.asset_entity_ids.push_back(static_cast<EntityId>(a.as_int()));
+}
+
+void validate(const std::string& path, const Scenario& s) {
+    if (s.rounds <= 0)
+        throw field_error(path, "rounds", "must be > 0");
+    if (s.grid.width() <= 0 || s.grid.height() <= 0)
+        throw field_error(path, "map", "empty");
+    if (s.entities.empty())
+        throw field_error(path, "entities", "must contain at least one entity");
+
+    for (const auto& e : s.entities) {
+        if (!s.grid.in_bounds(e.pos))
+            throw field_error(path, "entities.pos",
+                              "out of bounds for entity " + std::to_string(e.id));
+        if (e.team < 0)
+            throw field_error(path, "entities.team",
+                              "must be >= 0 for entity " + std::to_string(e.id));
+    }
+    for (const auto& d : s.devices) {
+        if (!s.grid.in_bounds(d.pos))
+            throw field_error(path, "devices.pos",
+                              "out of bounds for device " + std::to_string(d.id));
+    }
+    if (s.game_mode.type == "office_breach" &&
+        !s.grid.in_bounds(s.game_mode.objective_cell))
+        throw field_error(path, "game_mode.objective_cell", "out of bounds");
+}
+
+}  // namespace
 
 Scenario load_scenario(const std::string& path) {
     std::ifstream file(path);
     if (!file.is_open())
         throw std::runtime_error("cannot open scenario file: " + path);
-
     std::stringstream buf;
     buf << file.rdbuf();
     JsonValue root = json_parse(buf.str());
 
     Scenario s;
-    parse_top_level_config(root, s);
-    parse_effect_profiles(root, s);
+    s.seed = static_cast<uint64_t>(root["seed"].as_number());
+    if (root.has("rounds")) s.rounds = root["rounds"].as_int();
+
+    parse_map(path, root, s);
     parse_entities(path, root, s);
-    parse_policy_config(root, s);
-    validate_scenario(path, s);
+    parse_devices(root, s);
+    parse_belief_config(root, s);
+    parse_game_mode(root, s);
+    validate(path, s);
     return s;
 }

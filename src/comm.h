@@ -1,40 +1,34 @@
 #pragma once
 
+#include "grid.h"
 #include "types.h"
-#include "observation_state.h"
-#include "rng.h"
+
 #include <vector>
 
-struct MessagePayload {
-    enum Type { OBSERVATION };
-    Type type;
-    SharedObservationPayload observation; // valid when type == OBSERVATION
-};
-
-struct Message {
-    EntityId sender;
-    EntityId receiver;
-    int send_tick;
-    int delivery_tick;
-    MessagePayload payload;
-};
-
-struct CommChannel {
-    int base_latency_ticks;      // fixed minimum delay
-    float latency_per_distance;  // extra ticks per meter of sender-receiver distance
-    float loss_probability;      // chance message is dropped entirely [0, 1]
+// Binary jam model (contract §9). A jam is a circular region of effect
+// centered on a cell with an integer cell radius and a round duration.
+// The engine ticks durations down at round start. A unit at a cell that
+// lies within any active jam is "jammed" and its sightings do not
+// propagate to team belief that round.
+struct ActiveJam {
+    GridPos center{};
+    int radius = 0;         // Chebyshev cells
+    int rounds_remaining = 0;
+    int team_issued_by = -1; // informational; a team cannot jam itself
 };
 
 struct CommSystem {
-    std::vector<Message> pending;
+    std::vector<ActiveJam> active_jams;
 
-    // Queue a message. Computes delivery_tick from channel config and distance.
-    // May drop the message based on loss_probability.
-    // Returns the computed delivery_tick if queued, or -1 if dropped.
-    int send(EntityId sender, EntityId receiver,
-             const MessagePayload& payload, int current_tick,
-             float distance, const CommChannel& channel, Rng& rng);
+    void clear() { active_jams.clear(); }
 
-    // Collect and remove all messages whose delivery_tick == current_tick.
-    void deliver(int current_tick, std::vector<Message>& out);
+    // Add a new jam (contract §6 "cyber jam": 3-cell radius, 1 round).
+    void add_jam(GridPos center, int radius, int rounds, int issued_by_team);
+
+    // Decrement all durations; remove expired jams. Called at Phase 1
+    // (start of round).
+    void tick_down();
+
+    // Is the given cell covered by any active jam?
+    bool is_jammed(GridPos p) const;
 };

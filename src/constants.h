@@ -1,60 +1,23 @@
 #pragma once
 
 #include "types.h"
-#include <cmath>
 
-// ---------------------------------------------------------------------------
-// Floating-point geometry
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// Turn-based tactical constants.
+// See turn_based_tactical_contract.md for the authoritative values.
+// -----------------------------------------------------------------------------
 
-// kEpsilon (1e-9f) is defined in types.h alongside Vec2, since Vec2 uses it
-// inline and types.h cannot include this header.
+// Default number of rounds in a scenario (can be overridden by scenario JSON).
+inline constexpr int kDefaultRounds = 12;
 
-// Tau (2*pi) -- full circle in radians.
-inline constexpr float kTau = 2.0f * 3.14159265f;
+// Operator stats (contract §4).
+inline constexpr int kOperatorMaxAp = 3;
+inline constexpr int kOperatorMaxHp = 100;
+inline constexpr int kOperatorMaxAmmo = 10;
+inline constexpr int kOperatorVisionRange = 10;
 
-// ---------------------------------------------------------------------------
-// Phantom (false-positive) observation parameters
-// ---------------------------------------------------------------------------
-
-// Sentinel entity ID indicating a phantom observation that does not
-// correspond to any real entity.
-inline constexpr EntityId kPhantomTargetId = 0xFFFFFFFF;
-
-// Uncertainty radius (meters) assigned to phantom observations.
-inline constexpr float kPhantomUncertainty = 2.0f;
-
-// Phantom confidence is drawn uniformly from
-//   [kPhantomConfidenceMin, kPhantomConfidenceMin + kPhantomConfidenceRange].
-inline constexpr float kPhantomConfidenceMin   = 0.2f;
-inline constexpr float kPhantomConfidenceRange = 0.3f;
-
-// ---------------------------------------------------------------------------
-// Task system
-// ---------------------------------------------------------------------------
-
-// Radius (meters) within which an entity is considered to have arrived at a
-// task target. This is intentionally larger than kArrivalRadiusSq (movement.h,
-// 1 m^2 i.e. ~1 m) because task verification only requires proximity to an
-// area of interest, whereas waypoint navigation requires precise arrival.
-inline constexpr float kTaskArrivalRadius = 5.0f;
-
-// Tracks with confidence >= this threshold are not considered for VERIFY tasks.
-inline constexpr float kTaskConfidenceThreshold = 0.5f;
-
-// ---------------------------------------------------------------------------
-// Designation system
-// ---------------------------------------------------------------------------
-
-// Default time-to-live (ticks) for designation records before they expire.
-inline constexpr int kDefaultDesignationTTL = 30;
-
-// ---------------------------------------------------------------------------
-// Search initialization
-// ---------------------------------------------------------------------------
+// Per-team support AP pool (contract §2 Phase 2).
+inline constexpr int kTeamSupportApMax = 2;
 
 // Sentinel entity ID representing an invalid / unset entity reference.
-inline constexpr EntityId kInvalidEntity = 0xFFFFFFFE;
-
-// Large sentinel value used to initialize nearest-entity distance searches.
-inline constexpr float kInfDistance = 1e9f;
+inline constexpr EntityId kInvalidEntity = 0xFFFFFFFEu;
