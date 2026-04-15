@@ -4,6 +4,8 @@ project(xushi LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+option(XUSHI_ENABLE_VIEWER "Build the optional viewer subproject (requires raylib)" OFF)
+
 # Core library — shared by main executable and all tests
 add_library(xushi_core STATIC
     src/map.cpp
@@ -15,6 +17,7 @@ add_library(xushi_core STATIC
     src/replay.cpp
     src/path_resolve.cpp
     src/stats.cpp
+    src/world_hash.cpp
     src/sim.cpp
     src/sim_engine.cpp
     src/engagement.cpp
@@ -24,48 +27,8 @@ add_library(xushi_core STATIC
 add_executable(xushi src/main.cpp)
 target_link_libraries(xushi xushi_core)
 
-# Replay viewer (requires raylib)
-find_package(raylib QUIET)
-if(NOT raylib_FOUND)
-    find_library(RAYLIB_LIB raylib)
-    find_path(RAYLIB_INCLUDE raylib.h)
-    if(RAYLIB_LIB AND RAYLIB_INCLUDE)
-        set(RAYLIB_AVAILABLE TRUE)
-    endif()
-else()
-    set(RAYLIB_AVAILABLE TRUE)
-endif()
-
-if(RAYLIB_AVAILABLE)
-    add_executable(xushi_viewer
-        viewer/main.cpp
-        viewer/viewer_load.cpp
-        viewer/viewer_update.cpp
-        viewer/viewer_draw.cpp)
-    target_link_libraries(xushi_viewer xushi_core)
-    target_include_directories(xushi_viewer PRIVATE viewer)
-    if(raylib_FOUND)
-        target_link_libraries(xushi_viewer raylib)
-        if(WIN32)
-            target_link_libraries(xushi_viewer winmm gdi32 opengl32)
-        endif()
-    else()
-        target_include_directories(xushi_viewer PRIVATE ${RAYLIB_INCLUDE})
-        target_link_libraries(xushi_viewer ${RAYLIB_LIB})
-        # Platform libraries needed by raylib
-        if(APPLE)
-            target_link_libraries(xushi_viewer
-                "-framework IOKit"
-                "-framework Cocoa"
-                "-framework OpenGL")
-        elseif(WIN32)
-            target_link_libraries(xushi_viewer
-                winmm gdi32 opengl32)
-        endif()
-    endif()
-    message(STATUS "raylib found — building xushi_viewer")
-else()
-    message(STATUS "raylib not found — skipping xushi_viewer")
+if(XUSHI_ENABLE_VIEWER)
+    add_subdirectory(viewer)
 endif()
 
 # Tests
@@ -92,15 +55,11 @@ add_xushi_test(replay tests/test_replay.cpp)
 
 add_xushi_test(movement tests/test_movement.cpp)
 
-add_xushi_test(determinism tests/test_determinism.cpp)
-set_tests_properties(determinism PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-
-add_xushi_test(golden tests/test_golden.cpp)
+add_xushi_test(contract tests/test_contract.cpp)
+set_tests_properties(contract PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 add_xushi_test(parity tests/test_parity.cpp)
 set_tests_properties(parity PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-
-add_xushi_test(policy tests/test_policy.cpp)
 
 add_xushi_test(action tests/test_action.cpp)
 

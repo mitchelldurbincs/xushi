@@ -221,8 +221,7 @@ static void test_branch_point_both_successors_reachable(TestContext& ctx) {
 }
 
 int main() {
-    TestContext ctx;
-    std::printf("Running movement tests...\n");
+    return run_test_suite("movement", [](TestContext& ctx) {
     test_constant_velocity_unchanged(ctx);
     test_waypoint_approach(ctx);
     test_waypoint_advance(ctx);
@@ -233,5 +232,5 @@ int main() {
     test_branch_point_pick(ctx);
     test_branch_point_determinism(ctx);
     test_branch_point_both_successors_reachable(ctx);
-    return ctx.report_and_exit_code();
+    });
 }

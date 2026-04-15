@@ -10,8 +10,6 @@ struct SimResult {
     std::vector<uint64_t> world_hashes; // one per hash interval
     SystemStats stats;
     int final_track_count;
-    int tasks_assigned = 0;
-    int tasks_completed = 0;
 };
 
 // FNV-1a hash of entity positions and belief state. Used for determinism checks.

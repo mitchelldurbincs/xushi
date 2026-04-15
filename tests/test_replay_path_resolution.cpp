@@ -67,10 +67,9 @@ static void test_relative_falls_back_to_cwd(TestContext& ctx) {
 }
 
 int main() {
-    TestContext ctx;
-    std::printf("Running replay path resolution tests...\n");
+    return run_test_suite("replay path resolution", [](TestContext& ctx) {
     test_absolute_path_kept(ctx);
     test_relative_prefers_replay_parent(ctx);
     test_relative_falls_back_to_cwd(ctx);
-    return ctx.report_and_exit_code();
+    });
 }
