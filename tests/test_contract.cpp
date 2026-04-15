@@ -95,6 +95,48 @@ static void test_round_phase_order(TestContext& ctx) {
     ctx.check(hooks.phases == expected, "round phases execute in deterministic contract order");
 }
 
+static void test_round_initiative_alternates_by_round(TestContext& ctx) {
+    Scenario scn = load_scenario("scenarios/mvp_contract_2v2.json");
+    scn.ticks = 2;
+
+    SimEngine engine;
+    engine.init(scn);
+    PhaseOrderHooks hooks;
+
+    engine.begin_round(0, hooks);
+    const int first_owner = engine.round_state().initiative_team;
+    while (!engine.step_activation(0, hooks)) {}
+    engine.finalize_round(0, hooks);
+
+    engine.begin_round(1, hooks);
+    const int second_owner = engine.round_state().initiative_team;
+    while (!engine.step_activation(1, hooks)) {}
+    engine.finalize_round(1, hooks);
+
+    ctx.check(first_owner == 0, "round 0 initiative owner is team 0");
+    ctx.check(second_owner == 1, "round 1 initiative owner alternates to team 1");
+}
+
+static void test_dead_entities_removed_from_activation_order(TestContext& ctx) {
+    Scenario scn = load_scenario("scenarios/mvp_contract_2v2.json");
+    scn.ticks = 1;
+    scn.entities[0].vitality = 0; // eliminated pre-round
+
+    SimEngine engine;
+    engine.init(scn);
+
+    PhaseOrderHooks hooks;
+    engine.step(0, hooks);
+
+    int activation_count = 0;
+    for (const auto& phase : hooks.phases)
+        if (phase == "activation")
+            ++activation_count;
+
+    ctx.check(activation_count == static_cast<int>(scn.entities.size()) - 1,
+              "eliminated entities are removed from activation order");
+}
+
 static void test_ap_spending_and_reaction_trigger(TestContext& ctx) {
     Scenario scn = load_scenario("scenarios/mvp_reaction_ap.json");
 
@@ -173,6 +215,8 @@ static void test_deterministic_replay_checksums(TestContext& ctx) {
 int main() {
     return run_test_suite("contract", [](TestContext& ctx) {
         test_round_phase_order(ctx);
+        test_round_initiative_alternates_by_round(ctx);
+        test_dead_entities_removed_from_activation_order(ctx);
         test_ap_spending_and_reaction_trigger(ctx);
         test_belief_publication_under_comm_constraints(ctx);
         test_deterministic_replay_checksums(ctx);

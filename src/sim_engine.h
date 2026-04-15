@@ -17,6 +17,7 @@
 #include <functional>
 #include <map>
 #include <string>
+#include <unordered_set>
 #include <unordered_map>
 #include <vector>
 
@@ -86,8 +87,22 @@ public:
 
     struct RoundState {
         int round_tick = -1;
+        int round_number = -1;
+        int initiative_team = -1;
         RoundPhase phase = RoundPhase::Idle;
         size_t activation_index = 0;
+    };
+
+    struct RoundContext {
+        int round_number = -1;
+        int initiative_team = -1;
+        size_t activation_cursor = 0;
+        std::vector<size_t> activation_order;
+        std::unordered_map<EntityId, int> operator_ap;
+        std::unordered_map<EntityId, int> operator_ap_max;
+        std::unordered_map<int, int> support_ap;
+        std::unordered_map<int, int> support_ap_max;
+        std::unordered_map<int, int> support_ap_spent;
     };
 
     void init(const Scenario& scn, Policy* policy = nullptr,
@@ -151,6 +166,11 @@ private:
 
     void require_phase(RoundPhase expected) const;
     void advance_phase(RoundPhase next_phase);
+    void reset_round_context(int tick);
+    void build_activation_order_for_round();
+    bool is_action_type_allowed_in_phase(ActionType type, RoundPhase phase) const;
+    bool is_support_action(ActionType type) const;
+    bool is_operator_action(ActionType type) const;
 
     const Scenario* scn_ = nullptr;
     Map map_;
@@ -185,4 +205,6 @@ private:
     const Scenario::EffectProfile* find_effect_profile(uint32_t index) const;
 
     RoundState round_state_;
+    RoundContext round_context_;
+    int next_round_number_ = 0;
 };

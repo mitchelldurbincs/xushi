@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <set>
 #include <stdexcept>
 #include <unordered_set>
 
@@ -65,6 +66,8 @@ void SimEngine::init(const Scenario& scn, Policy* policy, GameMode* game_mode) {
         game_mode_->init(scn, entities_);
 
     round_state_ = RoundState{};
+    round_context_ = RoundContext{};
+    next_round_number_ = 0;
 }
 
 void SimEngine::require_phase(RoundPhase expected) const {
@@ -76,10 +79,95 @@ void SimEngine::advance_phase(RoundPhase next_phase) {
     round_state_.phase = next_phase;
 }
 
+bool SimEngine::is_support_action(ActionType type) const {
+    return type == ActionType::DesignateTrack ||
+           type == ActionType::ClearDesignation ||
+           type == ActionType::RequestBDA;
+}
+
+bool SimEngine::is_operator_action(ActionType type) const {
+    return type == ActionType::EngageTrack;
+}
+
+bool SimEngine::is_action_type_allowed_in_phase(ActionType type, RoundPhase phase) const {
+    if (is_support_action(type))
+        return phase == RoundPhase::SupportPublicationGate;
+    if (is_operator_action(type))
+        return phase == RoundPhase::Activations;
+    return false;
+}
+
+void SimEngine::build_activation_order_for_round() {
+    round_context_.activation_order.clear();
+
+    std::vector<size_t> same_team;
+    std::vector<size_t> other_teams;
+    same_team.reserve(entities_.size());
+    other_teams.reserve(entities_.size());
+
+    for (size_t i = 0; i < entities_.size(); ++i) {
+        const auto& e = entities_[i];
+        if (e.vitality <= 0)
+            continue;
+        if (e.team == round_context_.initiative_team) {
+            same_team.push_back(i);
+        } else {
+            other_teams.push_back(i);
+        }
+    }
+
+    round_context_.activation_order.insert(round_context_.activation_order.end(),
+                                           same_team.begin(), same_team.end());
+    round_context_.activation_order.insert(round_context_.activation_order.end(),
+                                           other_teams.begin(), other_teams.end());
+}
+
+void SimEngine::reset_round_context(int tick) {
+    const int next_round = next_round_number_++;
+    round_context_ = RoundContext{};
+    round_context_.round_number = next_round;
+    round_state_.round_number = next_round;
+    round_state_.round_tick = tick;
+
+    std::set<int> active_teams;
+    for (const auto& e : entities_) {
+        if (e.team >= 0)
+            active_teams.insert(e.team);
+    }
+
+    if (!active_teams.empty()) {
+        const size_t owner_index = static_cast<size_t>(next_round) % active_teams.size();
+        auto team_it = active_teams.begin();
+        std::advance(team_it, owner_index);
+        round_context_.initiative_team = *team_it;
+        round_state_.initiative_team = *team_it;
+    } else {
+        round_context_.initiative_team = -1;
+        round_state_.initiative_team = -1;
+    }
+
+    for (const auto& e : entities_) {
+        if (e.vitality <= 0)
+            continue;
+        constexpr int kDefaultOperatorApMax = 1;
+        round_context_.operator_ap_max[e.id] = kDefaultOperatorApMax;
+        round_context_.operator_ap[e.id] = kDefaultOperatorApMax;
+        if (e.team >= 0 && !round_context_.support_ap_max.count(e.team)) {
+            constexpr int kDefaultSupportApMax = 1;
+            round_context_.support_ap_max[e.team] = kDefaultSupportApMax;
+            round_context_.support_ap[e.team] = kDefaultSupportApMax;
+            round_context_.support_ap_spent[e.team] = 0;
+        }
+    }
+
+    build_activation_order_for_round();
+    round_state_.activation_index = 0;
+    round_context_.activation_cursor = 0;
+}
+
 void SimEngine::begin_round(int tick, TickHooks& hooks) {
     require_phase(RoundPhase::Idle);
-    round_state_.round_tick = tick;
-    round_state_.activation_index = 0;
+    reset_round_context(tick);
     advance_phase(RoundPhase::RoundStart);
 
     if (game_mode_)
@@ -105,7 +193,7 @@ bool SimEngine::step_activation(int tick, TickHooks& hooks) {
 
     require_phase(RoundPhase::Activations);
 
-    if (round_state_.activation_index >= entities_.size()) {
+    if (round_context_.activation_cursor >= round_context_.activation_order.size()) {
         hooks.on_positions_check(entities_);
         return true;
     }
@@ -119,11 +207,19 @@ bool SimEngine::step_activation(int tick, TickHooks& hooks) {
     };
 
     run_phase("activation", [&] {
-        tick_activation(tick, round_state_.activation_index, hooks);
+        while (round_context_.activation_cursor < round_context_.activation_order.size()) {
+            const size_t entity_index = round_context_.activation_order[round_context_.activation_cursor];
+            ++round_context_.activation_cursor;
+            round_state_.activation_index = round_context_.activation_cursor;
+            if (entity_index >= entities_.size())
+                continue;
+            if (entities_[entity_index].vitality <= 0)
+                continue;
+            tick_activation(tick, entity_index, hooks);
+            break;
+        }
     });
-
-    ++round_state_.activation_index;
-    if (round_state_.activation_index >= entities_.size()) {
+    if (round_context_.activation_cursor >= round_context_.activation_order.size()) {
         hooks.on_positions_check(entities_);
         return true;
     }
@@ -135,7 +231,7 @@ void SimEngine::finalize_round(int tick, TickHooks& hooks) {
         throw std::logic_error("round finalize tick mismatch");
 
     require_phase(RoundPhase::Activations);
-    if (round_state_.activation_index < entities_.size())
+    if (round_context_.activation_cursor < round_context_.activation_order.size())
         throw std::logic_error("cannot finalize round before all activations");
 
     const auto run_phase = [&](const char* phase, auto&& fn) {
@@ -177,6 +273,7 @@ void SimEngine::finalize_round(int tick, TickHooks& hooks) {
     }
 
     round_state_ = RoundState{};
+    round_context_ = RoundContext{};
 }
 
 void SimEngine::step(int tick, TickHooks& hooks) {
@@ -520,6 +617,10 @@ void SimEngine::tick_periodic_snapshots(int tick, TickHooks& hooks) {
 }
 
 void SimEngine::submit_action(const ActionRequest& req) {
+    const RoundPhase phase = round_state_.phase;
+    const bool pre_round_queue = (phase == RoundPhase::Idle || phase == RoundPhase::RoundStart);
+    if (!pre_round_queue && !is_action_type_allowed_in_phase(req.type, phase))
+        throw std::logic_error("action submitted in illegal round phase");
     pending_actions_.push_back(req);
 }
 
@@ -596,6 +697,12 @@ void SimEngine::adjudicate_actions_for_type(int tick, TickHooks& hooks, ActionTy
                 !belief_it->second.find_track(req.track_target)) {
                 result.allowed = false;
                 result.failure_mask = static_cast<uint32_t>(GateFailureReason::TrackNotFound);
+            } else if (ScenarioEntity* actor = find_entity(req.actor); !actor) {
+                result.allowed = false;
+                result.failure_mask = static_cast<uint32_t>(GateFailureReason::NoCapability);
+            } else if (actor->team >= 0 && round_context_.support_ap[actor->team] <= 0) {
+                result.allowed = false;
+                result.failure_mask = static_cast<uint32_t>(GateFailureReason::OutOfAmmo);
             } else {
                 result.allowed = true;
                 DesignationRecord rec;
@@ -607,11 +714,16 @@ void SimEngine::adjudicate_actions_for_type(int tick, TickHooks& hooks, ActionTy
                 rec.created_tick = tick;
                 rec.expires_tick = tick + kDefaultDesignationTTL;
                 designations_.push_back(rec);
+                if (actor->team >= 0) {
+                    round_context_.support_ap[actor->team] -= 1;
+                    round_context_.support_ap_spent[actor->team] += 1;
+                }
             }
             break;
         }
         case ActionType::ClearDesignation: {
             bool found = false;
+            ScenarioEntity* actor = find_entity(req.actor);
             for (auto it = designations_.begin(); it != designations_.end(); ++it) {
                 if (it->track_target == req.track_target &&
                     it->issuer == req.actor &&
@@ -621,9 +733,18 @@ void SimEngine::adjudicate_actions_for_type(int tick, TickHooks& hooks, ActionTy
                     break;
                 }
             }
-            result.allowed = found;
+            result.allowed = found && actor &&
+                (actor->team < 0 || round_context_.support_ap[actor->team] > 0);
             if (!found)
                 result.failure_mask = static_cast<uint32_t>(GateFailureReason::TrackNotFound);
+            else if (!actor)
+                result.failure_mask = static_cast<uint32_t>(GateFailureReason::NoCapability);
+            else if (actor->team >= 0 && round_context_.support_ap[actor->team] <= 0)
+                result.failure_mask = static_cast<uint32_t>(GateFailureReason::OutOfAmmo);
+            if (result.allowed && actor->team >= 0) {
+                round_context_.support_ap[actor->team] -= 1;
+                round_context_.support_ap_spent[actor->team] += 1;
+            }
             break;
         }
         case ActionType::EngageTrack: {
@@ -638,6 +759,8 @@ void SimEngine::adjudicate_actions_for_type(int tick, TickHooks& hooks, ActionTy
             uint32_t failure = 0;
             if (!actor || !actor->can_engage)
                 failure |= static_cast<uint32_t>(GateFailureReason::NoCapability);
+            if (actor && round_context_.operator_ap[actor->id] <= 0)
+                failure |= static_cast<uint32_t>(GateFailureReason::OutOfAmmo);
             if (actor && actor->cooldown_ticks_remaining > 0)
                 failure |= static_cast<uint32_t>(GateFailureReason::Cooldown);
             if (!profile)
@@ -712,6 +835,7 @@ void SimEngine::adjudicate_actions_for_type(int tick, TickHooks& hooks, ActionTy
                 }
 
                 actor->ammo = std::max(0, actor->ammo - profile->ammo_cost);
+                round_context_.operator_ap[actor->id] -= 1;
                 actor->cooldown_ticks_remaining = profile->cooldown_ticks;
 
                 outcome.vitality_after = target->vitality;
