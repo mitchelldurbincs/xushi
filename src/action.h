@@ -2,6 +2,7 @@
 
 #include "types.h"
 #include <cstdint>
+#include <vector>
 
 // ── Action types ──
 
@@ -10,6 +11,42 @@ enum class ActionType {
     ClearDesignation,
     EngageTrack,
     RequestBDA
+};
+
+enum class ActionActorType {
+    Auto,
+    Operator,
+    Drone,
+    TeamSupportController
+};
+
+enum class ActionPhaseKind {
+    Any,
+    OperatorActivation,
+    SupportPhase
+};
+
+enum class ActionRejectionReason {
+    None = 0,
+    IllegalPhase,
+    IllegalActorType,
+    InvalidActor,
+    InvalidTarget,
+    InsufficientAP,
+    InsufficientSAP,
+    OneShotAlreadyUsed,
+    UnsupportedAction
+};
+
+struct OperatorActivationActionDef {
+    int ap_cost = 0;
+    bool one_shot = false;
+};
+
+struct SupportPhaseActionDef {
+    int sap_cost = 0;
+    bool spend_team_pool = true;
+    int initiative_delta = 0;
 };
 
 enum class DesignationKind {
@@ -54,11 +91,15 @@ inline bool has_reason(uint32_t mask, GateFailureReason r) {
 
 struct ActionRequest {
     EntityId actor = 0;
+    ActionActorType actor_type = ActionActorType::Auto;
     ActionType type = ActionType::DesignateTrack;
+    ActionPhaseKind phase_kind = ActionPhaseKind::Any;
     EntityId track_target = 0;              // Track.target EntityId
     DesignationKind desig_kind = DesignationKind::Observe;  // for DesignateTrack
     int priority = 0;                       // for DesignateTrack
     uint32_t effect_profile_index = 0;      // for EngageTrack (future)
+    OperatorActivationActionDef operator_def{};
+    SupportPhaseActionDef support_def{};
 };
 
 struct ActionResult {
@@ -70,8 +111,16 @@ struct ActionResult {
     uint32_t truth_failure_mask = 0;
     bool rejected_by_belief_gate = false;
     bool rejected_by_truth_adjudication = false;
+    std::vector<ActionRejectionReason> rejection_reasons;
     int tick = 0;
 };
+
+inline bool has_rejection_reason(const ActionResult& result, ActionRejectionReason reason) {
+    for (ActionRejectionReason r : result.rejection_reasons)
+        if (r == reason)
+            return true;
+    return false;
+}
 
 struct EffectOutcome {
     ActionRequest request;
@@ -118,6 +167,40 @@ inline const char* designation_kind_str(DesignationKind k) {
         case DesignationKind::MaintainCustody: return "MAINTAIN_CUSTODY";
         case DesignationKind::Engage:          return "ENGAGE";
         case DesignationKind::BDA:             return "BDA";
+    }
+    return "???";
+}
+
+inline const char* action_actor_type_str(ActionActorType t) {
+    switch (t) {
+        case ActionActorType::Auto: return "AUTO";
+        case ActionActorType::Operator: return "OPERATOR";
+        case ActionActorType::Drone: return "DRONE";
+        case ActionActorType::TeamSupportController: return "TEAM_SUPPORT_CONTROLLER";
+    }
+    return "???";
+}
+
+inline const char* action_phase_kind_str(ActionPhaseKind k) {
+    switch (k) {
+        case ActionPhaseKind::Any: return "ANY";
+        case ActionPhaseKind::OperatorActivation: return "OPERATOR_ACTIVATION";
+        case ActionPhaseKind::SupportPhase: return "SUPPORT_PHASE";
+    }
+    return "???";
+}
+
+inline const char* action_rejection_reason_str(ActionRejectionReason reason) {
+    switch (reason) {
+        case ActionRejectionReason::None: return "NONE";
+        case ActionRejectionReason::IllegalPhase: return "ILLEGAL_PHASE";
+        case ActionRejectionReason::IllegalActorType: return "ILLEGAL_ACTOR_TYPE";
+        case ActionRejectionReason::InvalidActor: return "INVALID_ACTOR";
+        case ActionRejectionReason::InvalidTarget: return "INVALID_TARGET";
+        case ActionRejectionReason::InsufficientAP: return "INSUFFICIENT_AP";
+        case ActionRejectionReason::InsufficientSAP: return "INSUFFICIENT_SAP";
+        case ActionRejectionReason::OneShotAlreadyUsed: return "ONE_SHOT_ALREADY_USED";
+        case ActionRejectionReason::UnsupportedAction: return "UNSUPPORTED_ACTION";
     }
     return "???";
 }
