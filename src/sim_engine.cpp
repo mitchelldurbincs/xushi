@@ -11,7 +11,7 @@
 
 // FNV-1a hash of entity positions and belief state.
 uint64_t SimEngine::compute_world_hash() const {
-    return compute_world_hash_canonical(entities_, beliefs_);
+    return compute_world_hash_canonical(entities_, beliefs_.states());
 }
 
 void SimEngine::init(const Scenario& scn, Policy* policy, GameMode* game_mode) {
@@ -30,9 +30,8 @@ void SimEngine::init(const Scenario& scn, Policy* policy, GameMode* game_mode) {
 
     rng_ = Rng(scn.seed);
     comms_ = CommSystem{};
-    beliefs_.clear();
-    for (auto* t : trackers_)
-        beliefs_[t->id] = BeliefState{};
+    beliefs_.init_trackers(trackers_);
+    truth_state_.clear();
 
     stats_ = SystemStats{};
     policy_ = policy ? policy : &null_policy_;
@@ -136,7 +135,7 @@ void SimEngine::finalize_round(int tick, TickHooks& hooks) {
 
     std::vector<Message> delivered;
     advance_phase(RoundPhase::Communication);
-    run_phase("communication", [&] { tick_communication(tick, delivered); });
+    run_phase("communication", [&] { tick_communication(tick, hooks, delivered); });
 
     advance_phase(RoundPhase::Belief);
     run_phase("belief", [&] { tick_belief(tick, hooks, delivered); });
@@ -222,20 +221,28 @@ void SimEngine::tick_activation(int tick, size_t activation_index, TickHooks& ho
         pobs.id = e.id;
         pobs.position = e.position;
         pobs.tick = tick;
-        auto belief_it = beliefs_.find(e.id);
-        if (belief_it != beliefs_.end()) {
-            auto& tracks = belief_it->second.tracks;
+        const BeliefState* belief = beliefs_.find(e.id);
+        if (belief) {
+            auto& tracks = belief->tracks;
             for (const auto& t : tracks) {
+                PolicyTrackObservation policy_track{};
+                policy_track.target = t.target;
+                policy_track.estimated_position = t.estimated_position;
+                policy_track.confidence = t.confidence;
+                policy_track.uncertainty = t.uncertainty;
+                policy_track.status = t.status;
+                policy_track.class_id = t.class_id;
+                policy_track.identity_confidence = t.identity_confidence;
+
                 if (pobs.num_tracks < kMaxPolicyTracks) {
-                    pobs.local_tracks[pobs.num_tracks++] = t;
+                    pobs.local_tracks[pobs.num_tracks++] = policy_track;
                 } else {
                     int worst = 0;
-                    for (int j = 1; j < kMaxPolicyTracks; ++j) {
+                    for (int j = 1; j < kMaxPolicyTracks; ++j)
                         if (pobs.local_tracks[j].confidence < pobs.local_tracks[worst].confidence)
                             worst = j;
-                    }
-                    if (t.confidence > pobs.local_tracks[worst].confidence)
-                        pobs.local_tracks[worst] = t;
+                    if (policy_track.confidence > pobs.local_tracks[worst].confidence)
+                        pobs.local_tracks[worst] = policy_track;
                 }
             }
         }
@@ -279,32 +286,17 @@ void SimEngine::tick_activation(int tick, size_t activation_index, TickHooks& ho
             stats_.detections_generated++;
             detected_targets.push_back(obs_ent->id);
             if (e.can_track)
-                beliefs_[e.id].update(obs, tick);
+                beliefs_.apply_local_observation(e.id, obs, tick);
             hooks.on_detection(tick, obs);
 
-            MessagePayload payload;
-            payload.type = MessagePayload::OBSERVATION;
-            payload.observation = obs;
-            for (auto* tracker : trackers_) {
-                if (e.team >= 0 && tracker->team >= 0 && e.team != tracker->team)
-                    continue;
-                float dist = (tracker->position - e.position).length();
-                int dt = comms_.send(e.id, tracker->id, payload, tick, dist, scn.channel, rng_);
-                if (dt >= 0) {
-                    stats_.messages_sent++;
-                    hooks.on_msg_sent(tick, e.id, tracker->id, dt);
-                } else {
-                    stats_.messages_dropped++;
-                    hooks.on_msg_dropped(tick, e.id, tracker->id);
-                }
-            }
+            truth_state_.queue_publication(e.id, obs);
         } else {
             hooks.on_miss(tick, e.id);
         }
     }
 
     if (e.can_track) {
-        beliefs_[e.id].apply_negative_evidence(
+        beliefs_.apply_negative_evidence(e.id,
             e.position, scn.max_sensor_range, map_,
             detected_targets, scn.belief.negative_evidence_factor);
     }
@@ -324,56 +316,70 @@ void SimEngine::tick_activation(int tick, size_t activation_index, TickHooks& ho
         phantom.is_false_positive = true;
 
         if (e.can_track)
-            beliefs_[e.id].update(phantom, tick);
+            beliefs_.apply_local_observation(e.id, phantom, tick);
 
         hooks.on_detection(tick, phantom);
         hooks.on_false_positive(tick, e.id, phantom);
 
-        MessagePayload payload;
-        payload.type = MessagePayload::OBSERVATION;
-        payload.observation = phantom;
-        for (auto* tracker : trackers_) {
-            if (e.team >= 0 && tracker->team >= 0 && e.team != tracker->team)
-                continue;
-            float dist = (tracker->position - e.position).length();
-            int dt = comms_.send(e.id, tracker->id, payload, tick, dist, scn.channel, rng_);
-            if (dt >= 0) {
-                stats_.messages_sent++;
-                hooks.on_msg_sent(tick, e.id, tracker->id, dt);
-            } else {
-                stats_.messages_dropped++;
-                hooks.on_msg_dropped(tick, e.id, tracker->id);
-            }
-        }
+        truth_state_.queue_publication(e.id, phantom);
     }
 }
 
-void SimEngine::tick_communication(int tick, std::vector<Message>& delivered) {
+void SimEngine::tick_communication(int tick, TickHooks& hooks, std::vector<Message>& delivered) {
+    const Scenario& scn = *scn_;
+    for (const auto& publication : truth_state_.pending_publications()) {
+        const ScenarioEntity* sender = nullptr;
+        for (const auto& entity : entities_) {
+            if (entity.id == publication.sender) {
+                sender = &entity;
+                break;
+            }
+        }
+        if (!sender)
+            continue;
+
+        MessagePayload payload;
+        payload.type = MessagePayload::OBSERVATION;
+        payload.observation = publication.payload;
+        for (auto* tracker : trackers_) {
+            if (sender->team >= 0 && tracker->team >= 0 && sender->team != tracker->team)
+                continue;
+            float dist = (tracker->position - sender->position).length();
+            int dt = comms_.send(sender->id, tracker->id, payload, tick, dist, scn.channel, rng_);
+            if (dt >= 0) {
+                stats_.messages_sent++;
+                hooks.on_msg_sent(tick, sender->id, tracker->id, dt);
+            } else {
+                stats_.messages_dropped++;
+                hooks.on_msg_dropped(tick, sender->id, tracker->id);
+            }
+        }
+    }
+    truth_state_.clear();
+
     comms_.deliver(tick, delivered);
 }
 
 void SimEngine::tick_belief(int tick, TickHooks& hooks, const std::vector<Message>& delivered) {
     const Scenario& scn = *scn_;
     std::map<EntityId, std::vector<EntityId>> tracked_before;
-    for (auto& [gid, belief] : beliefs_) {
+    for (auto& [gid, belief] : beliefs_.states()) {
         for (const auto& t : belief.tracks)
             tracked_before[gid].push_back(t.target);
     }
 
     for (const auto& msg : delivered) {
         stats_.messages_delivered++;
-        auto it = beliefs_.find(msg.receiver);
-        if (it != beliefs_.end())
-            it->second.update(msg.payload.observation, tick);
+        beliefs_.apply_published_observation(msg.receiver, msg.payload.observation, tick);
     }
-    for (auto& [gid, belief] : beliefs_)
+    for (auto& [gid, belief] : beliefs_.states())
         belief.decay(tick, scn.dt, scn.belief);
 
-    for (auto& [gid, belief] : beliefs_)
+    for (auto& [gid, belief] : beliefs_.states())
         hooks.on_belief_invariant_check(belief);
 
     int total_active = 0;
-    for (auto& [gid, belief] : beliefs_) {
+    for (auto& [gid, belief] : beliefs_.states()) {
         total_active += static_cast<int>(belief.tracks.size());
         for (EntityId id : tracked_before[gid]) {
             if (!belief.find_track(id))
@@ -385,7 +391,7 @@ void SimEngine::tick_belief(int tick, TickHooks& hooks, const std::vector<Messag
     for (const auto& msg : delivered)
         hooks.on_msg_delivered(tick, msg.sender, msg.receiver);
 
-    for (auto& [gid, belief] : beliefs_) {
+    for (auto& [gid, belief] : beliefs_.states()) {
         for (const auto& t : belief.tracks)
             hooks.on_track_update(tick, gid, t);
         for (EntityId id : tracked_before[gid]) {
@@ -409,7 +415,7 @@ void SimEngine::tick_tasks(int tick, TickHooks& hooks) {
         if (dist_sq > kTaskArrivalRadius * kTaskArrivalRadius) continue;
 
         bool corroborated = false;
-        for (auto& [gid, belief] : beliefs_) {
+        for (auto& [gid, belief] : beliefs_.states()) {
             const Track* trk = belief.find_track(task.target_id);
             if (trk && trk->status == TrackStatus::FRESH) {
                 corroborated = true;
@@ -424,8 +430,9 @@ void SimEngine::tick_tasks(int tick, TickHooks& hooks) {
         active_tasks_.erase(eid);
 
     for (auto* tracker_ent : trackers_) {
-        auto& belief = beliefs_[tracker_ent->id];
-        for (const auto& trk : belief.tracks) {
+        BeliefState* belief = beliefs_.find(tracker_ent->id);
+        if (!belief) continue;
+        for (const auto& trk : belief->tracks) {
             if (trk.status != TrackStatus::STALE) continue;
             if (trk.confidence >= kTaskConfidenceThreshold) continue;
 
@@ -515,11 +522,13 @@ void SimEngine::adjudicate_actions_for_type(int tick, TickHooks& hooks, ActionTy
         result.request = req;
         result.tick = tick;
 
-        auto belief_it = beliefs_.find(req.actor);
+        // Look up actor's belief state
+        auto belief_it = beliefs_.states().find(req.actor);
 
         switch (req.type) {
         case ActionType::DesignateTrack: {
-            if (belief_it == beliefs_.end() ||
+            // Check that actor has a belief and the track exists
+            if (belief_it == beliefs_.states().end() ||
                 !belief_it->second.find_track(req.track_target)) {
                 result.allowed = false;
                 result.failure_mask = static_cast<uint32_t>(GateFailureReason::TrackNotFound);
@@ -558,9 +567,10 @@ void SimEngine::adjudicate_actions_for_type(int tick, TickHooks& hooks, ActionTy
             const Scenario::EffectProfile* profile = find_effect_profile(req.effect_profile_index);
             ScenarioEntity* target = find_entity(req.track_target);
             const Track* target_track = nullptr;
-            if (belief_it != beliefs_.end())
+            if (belief_it != beliefs_.states().end())
                 target_track = belief_it->second.find_track(req.track_target);
 
+            // Basic runtime checks that do not require spatial adjudication.
             uint32_t failure = 0;
             if (!actor || !actor->can_engage)
                 failure |= static_cast<uint32_t>(GateFailureReason::NoCapability);
@@ -572,14 +582,17 @@ void SimEngine::adjudicate_actions_for_type(int tick, TickHooks& hooks, ActionTy
                 failure |= static_cast<uint32_t>(GateFailureReason::OutOfAmmo);
             if (!target_track)
                 failure |= static_cast<uint32_t>(GateFailureReason::TrackNotFound);
-            if (!target)
-                failure |= static_cast<uint32_t>(GateFailureReason::TrackNotFound);
 
-            if (actor && target && target_track) {
+            // Two-stage gating model:
+            //  1) Decision gate uses actor-accessible belief data only.
+            //  2) Truth adjudication runs only if decision gate passed and checks realization truth.
+            uint32_t belief_failure = 0;
+            uint32_t truth_failure = 0;
+
+            if (actor && target_track) {
                 EngagementGateInputs gate_inputs;
                 gate_inputs.actor = actor;
                 gate_inputs.target_track = target_track;
-                gate_inputs.target_truth = target;
                 gate_inputs.effect_profile_index = req.effect_profile_index;
                 gate_inputs.effect_profile = profile;
                 gate_inputs.engagement_rules = scn_ ? &scn_->engagement_rules : nullptr;
@@ -589,11 +602,26 @@ void SimEngine::adjudicate_actions_for_type(int tick, TickHooks& hooks, ActionTy
                 gate_inputs.world.actor_id = req.actor;
                 gate_inputs.world.track_target_id = req.track_target;
 
-                const EngagementGateResult gate_result = compute_engagement_gates(gate_inputs);
-                failure |= gate_result.failure_mask;
+                const EngagementGateResult belief_gate = compute_engagement_gates(
+                    gate_inputs, EngagementGateStage::DecisionFromBelief);
+                belief_failure = belief_gate.failure_mask;
+                failure |= belief_failure;
+
+                if (belief_failure == 0) {
+                    gate_inputs.target_truth = target;
+                    const EngagementGateResult truth_gate = compute_engagement_gates(
+                        gate_inputs, EngagementGateStage::TruthAdjudication);
+                    truth_failure = truth_gate.failure_mask;
+                    failure |= truth_failure;
+                }
             }
 
             result.failure_mask = failure;
+            result.belief_failure_mask = belief_failure;
+            result.truth_failure_mask = truth_failure;
+            result.rejected_by_belief_gate = (belief_failure != 0);
+            result.rejected_by_truth_adjudication =
+                (belief_failure == 0 && truth_failure != 0);
             result.allowed = (failure == 0);
 
             if (result.allowed && actor && profile && target) {

@@ -151,23 +151,6 @@ struct CLIHooks : TickHooks {
         check_belief_invariants(belief, "after belief decay");
     }
 
-    void on_task_assigned(int tick, const Task& task, const ScenarioEntity& entity) override {
-        replay->log(replay_task_assigned(tick, task));
-        if (!bench_mode)
-            std::printf("tick %3d  TASK ASSIGNED: %s %u -> VERIFY target %u at (%.1f,%.1f)\n",
-                        tick, entity.role_name.c_str(), entity.id,
-                        task.target_id, task.target_position.x, task.target_position.y);
-    }
-
-    void on_task_completed(int tick, EntityId entity, EntityId target, bool corroborated) override {
-        replay->log(replay_task_completed(tick, entity, target, corroborated));
-        if (!bench_mode) {
-            std::printf("tick %3d  TASK COMPLETED: %s[%u] %s target %u\n",
-                        tick, entity_lookup.role(entity), entity,
-                        corroborated ? "CORROBORATED" : "NOT FOUND", target);
-        }
-    }
-
     void on_game_mode_end(int tick, const GameModeResult& result) override {
         if (!bench_mode) {
             if (result.winning_team >= 0)

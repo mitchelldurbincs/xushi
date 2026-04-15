@@ -19,16 +19,16 @@ tools/bench/profile.sh --help
 
 ## 1) Run benchmark scenario
 
-Choose a deterministic scenario (typically `scenarios/benchmark_dense.json`) and run benchmark mode:
+Choose a deterministic scenario (typically `scenarios/mvp_contract_2v2.json`) and run benchmark mode:
 
 ```bash
-./build/xushi --bench scenarios/benchmark_dense.json
+./build/xushi --bench scenarios/mvp_contract_2v2.json
 ```
 
 or via helper:
 
 ```bash
-tools/bench/profile.sh scenarios/benchmark_dense.json
+tools/bench/profile.sh scenarios/mvp_contract_2v2.json
 ```
 
 The helper script emits a UTC `run_id` and stores benchmark logs under `profiles/`.
@@ -38,7 +38,7 @@ The helper script emits a UTC `run_id` and stores benchmark logs under `profiles
 ### Linux (`perf`)
 
 ```bash
-tools/bench/profile.sh --flamegraph scenarios/benchmark_dense.json
+tools/bench/profile.sh --flamegraph scenarios/mvp_contract_2v2.json
 ```
 
 This captures:
