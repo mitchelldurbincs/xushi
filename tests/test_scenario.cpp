@@ -1,405 +1,89 @@
 #include "test_helpers.h"
 #include "../src/scenario.h"
-#include <cmath>
+
 #include <cstdio>
 #include <fstream>
+#include <stdexcept>
 #include <string>
 
-static const char* kInvalidScenarioPath = "tests/tmp_invalid_scenario.json";
+static const char* TEST_PATH = "test_scenario.tmp.json";
 
-static void write_temp_scenario(const char* path, const char* json) {
-    std::ofstream out(path);
-    out << json;
+static void write_file(const std::string& path, const std::string& content) {
+    std::ofstream f(path);
+    f << content;
 }
 
-static void test_load_default(TestContext& ctx) {
-    Scenario s = load_scenario("scenarios/mvp_contract_2v2.json");
-    ctx.check(s.seed == 20260414, "seed");
-    ctx.check(s.dt == 1.0f, "dt");
-    ctx.check(s.ticks == 40, "ticks");
-    ctx.check(std::fabs(s.max_sensor_range - 90.0f) < 0.01f, "max_sensor_range");
-    ctx.check(s.obstacles.size() == 1, "obstacle count");
-    ctx.check(s.obstacles[0].min.x == 47.0f, "obstacle min.x");
-    ctx.check(s.entities.size() == 8, "entity count");
-    ctx.check(s.entities[2].role_name == "blue_drone", "first drone role_name");
-    ctx.check(s.entities[2].can_sense == true, "drone can_sense");
-    ctx.check(s.entities[0].can_engage == true, "drone can_engage");
-    ctx.check(s.entities[0].ammo == 4, "operator ammo");
-    ctx.check(s.entities[0].allowed_effect_profile_indices.size() == 1,
-          "drone allowed profile count");
-    ctx.check(s.entities[0].allowed_effect_profile_indices[0] == 0,
-          "drone allowed profile index");
-    ctx.check(s.entities[2].velocity.x > 0.0f, "drone velocity");
-    ctx.check(s.effect_profiles.size() == 1, "effect profile count");
-    ctx.check(s.effect_profiles[0].name == "rifle", "effect profile name");
-    ctx.check(std::fabs(s.effect_profiles[0].range - 35.0f) < 0.01f,
-          "effect profile range");
-    ctx.check(s.channel.base_latency_ticks == 2, "channel base_latency");
-    ctx.check(std::fabs(s.channel.loss_probability - 0.05f) < 0.01f, "channel loss");
-    ctx.check(s.belief.fresh_ticks == 4, "belief fresh_ticks");
-    ctx.check(std::fabs(s.engagement_rules.protected_zone_center.x - 0.0f) < 0.01f,
-          "default protected zone center.x");
-    ctx.check(std::fabs(s.engagement_rules.protected_zone_radius - 10.0f) < 0.01f,
-          "default protected zone radius");
-    ctx.check(std::fabs(s.engagement_rules.friendly_risk_radius - 8.0f) < 0.01f,
-          "default friendly risk radius");
-    ctx.check(std::fabs(s.engagement_rules.min_identity_confidence - 0.5f) < 0.01f,
-          "default min identity confidence");
+static void test_loads_small_office_breach(TestContext& ctx) {
+    Scenario s = load_scenario("scenarios/small_office_breach.json");
+    ctx.check(s.seed == 1103, "seed parsed");
+    ctx.check(s.rounds == 12, "rounds parsed");
+    ctx.check(s.grid.width() == 16 && s.grid.height() == 12,
+              "grid dims 16x12");
+    ctx.check(s.entities.size() == 6, "6 entities (4 operators + 2 drones)");
+    ctx.check(s.devices.size() == 3, "3 devices");
+    ctx.check(s.game_mode.type == "office_breach", "office_breach game mode");
+    ctx.check(s.game_mode.objective_cell == GridPos{13, 3}, "objective parsed");
+    ctx.check(s.grid.doors().size() == 1, "1 door parsed");
+    ctx.check(s.grid.room_count() >= 2, "objective room separated by CLOSED door");
 }
 
-static void test_load_los_blocked(TestContext& ctx) {
-    Scenario s = load_scenario("scenarios/los_blocked.json");
-    ctx.check(s.seed == 99, "seed");
-    ctx.check(s.ticks == 20, "ticks");
-    ctx.check(s.entities[2].velocity.x == 0.0f, "stationary target");
+static void test_minimal_valid_scenario(TestContext& ctx) {
+    const std::string json = R"({
+  "seed": 1,
+  "rounds": 3,
+  "map": { "rows": ["WWW", "W.W", "WWW"] },
+  "entities": [
+    { "id": 0, "kind": "operator", "pos": [1, 1], "team": 0 }
+  ]
+})";
+    write_file(TEST_PATH, json);
+    Scenario s = load_scenario(TEST_PATH);
+    ctx.check(s.entities.size() == 1, "one entity");
+    ctx.check(s.entities[0].pos == GridPos{1, 1}, "pos parsed");
+    ctx.check(s.entities[0].kind == EntityKind::Operator, "operator kind");
+    std::remove(TEST_PATH);
 }
 
-static void test_missing_file(TestContext& ctx) {
-    bool caught = false;
-    try { load_scenario("nonexistent.json"); }
-    catch (const std::runtime_error&) { caught = true; }
-    ctx.check(caught, "error on missing file");
+static void test_rejects_out_of_bounds(TestContext& ctx) {
+    const std::string json = R"({
+  "seed": 1,
+  "rounds": 3,
+  "map": { "rows": ["WWW", "W.W", "WWW"] },
+  "entities": [
+    { "id": 0, "kind": "operator", "pos": [5, 5], "team": 0 }
+  ]
+})";
+    write_file(TEST_PATH, json);
+    bool threw = false;
+    try { load_scenario(TEST_PATH); }
+    catch (const std::runtime_error&) { threw = true; }
+    ctx.check(threw, "throws on out-of-bounds entity");
+    std::remove(TEST_PATH);
 }
 
-static void test_multi_drone_accepted(TestContext& ctx) {
-    const char* path = "tests/tmp_multi_drone.json";
-    write_temp_scenario(path,
-        "{"
-        "\"seed\":1,"
-        "\"obstacles\":[],"
-        "\"entities\":["
-        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0],\"can_sense\":true},"
-        "{\"id\":1,\"type\":\"drone\",\"pos\":[1,0],\"vel\":[0,0],\"can_sense\":true},"
-        "{\"id\":2,\"type\":\"ground\",\"pos\":[0,1],\"vel\":[0,0],\"can_track\":true},"
-        "{\"id\":3,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0],\"is_observable\":true}"
-        "]"
-        "}");
-
-    bool ok = false;
-    try {
-        Scenario s = load_scenario(path);
-        ok = s.entities.size() == 4;
-    } catch (...) {}
-    ctx.check(ok, "multi drone accepted");
-    std::remove(path);
-}
-
-static void test_multi_ground_accepted(TestContext& ctx) {
-    const char* path = "tests/tmp_multi_ground.json";
-    write_temp_scenario(path,
-        "{"
-        "\"seed\":1,"
-        "\"obstacles\":[],"
-        "\"entities\":["
-        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0],\"can_sense\":true},"
-        "{\"id\":1,\"type\":\"ground\",\"pos\":[1,0],\"vel\":[0,0],\"can_track\":true},"
-        "{\"id\":2,\"type\":\"ground\",\"pos\":[0,1],\"vel\":[0,0],\"can_track\":true},"
-        "{\"id\":3,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0],\"is_observable\":true}"
-        "]"
-        "}");
-
-    bool ok = false;
-    try {
-        Scenario s = load_scenario(path);
-        ok = s.entities.size() == 4;
-    } catch (...) {}
-    ctx.check(ok, "multi ground accepted");
-    std::remove(path);
-}
-
-static void test_custom_role_accepted(TestContext& ctx) {
-    const char* path = "tests/tmp_custom_role.json";
-    write_temp_scenario(path,
-        "{"
-        "\"seed\":1,"
-        "\"obstacles\":[],"
-        "\"entities\":["
-        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0],\"can_sense\":true},"
-        "{\"id\":1,\"type\":\"ground\",\"pos\":[1,0],\"vel\":[0,0],\"can_track\":true},"
-        "{\"id\":2,\"type\":\"scout\",\"pos\":[5,5],\"vel\":[0,0],"
-        " \"can_sense\":true,\"is_observable\":true}"
-        "]"
-        "}");
-
-    Scenario s = load_scenario(path);
-    ctx.check(s.entities[2].role_name == "scout", "scout role_name");
-    ctx.check(s.entities[2].can_sense == true, "scout can_sense");
-    ctx.check(s.entities[2].is_observable == true, "scout is_observable");
-    ctx.check(s.entities[2].can_track == false, "scout !can_track");
-    std::remove(path);
-}
-
-static void test_capability_override(TestContext& ctx) {
-    const char* path = "tests/tmp_cap_override.json";
-    write_temp_scenario(path,
-        "{"
-        "\"seed\":1,"
-        "\"obstacles\":[],"
-        "\"entities\":["
-        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0],\"can_sense\":true,\"can_track\":true},"
-        "{\"id\":1,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0],\"is_observable\":true}"
-        "]"
-        "}");
-
-    Scenario s = load_scenario(path);
-    ctx.check(s.entities[0].can_sense == true, "drone keeps can_sense");
-    ctx.check(s.entities[0].can_track == true, "drone override can_track");
-    std::remove(path);
-}
-
-static void test_missing_capabilities_rejected(TestContext& ctx) {
-    const char* path = "tests/tmp_no_caps.json";
-    write_temp_scenario(path,
-        "{"
-        "\"seed\":1,"
-        "\"obstacles\":[],"
-        "\"entities\":["
-        "{\"id\":0,\"type\":\"blob\",\"pos\":[0,0],\"vel\":[0,0]},"
-        "{\"id\":1,\"type\":\"blob\",\"pos\":[1,0],\"vel\":[0,0]}"
-        "]"
-        "}");
-
-    bool caught = false;
-    try {
-        load_scenario(path);
-    } catch (const std::runtime_error&) {
-        caught = true;
-    }
-    ctx.check(caught, "no capabilities rejected");
-    std::remove(path);
-}
-
-static void test_duplicate_entity_ids_rejected(TestContext& ctx) {
-    const char* path = "tests/tmp_duplicate_ids.json";
-    write_temp_scenario(path,
-        "{"
-        "\"seed\":1,"
-        "\"obstacles\":[],"
-        "\"entities\":["
-        "{\"id\":7,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0],\"can_sense\":true},"
-        "{\"id\":7,\"type\":\"ground\",\"pos\":[1,0],\"vel\":[0,0],\"can_track\":true},"
-        "{\"id\":3,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0],\"is_observable\":true}"
-        "]"
-        "}");
-
-    bool caught = false;
-    std::string message;
-    try {
-        load_scenario(path);
-    } catch (const std::runtime_error& e) {
-        caught = true;
-        message = e.what();
-    }
-
-    ctx.check(caught, "duplicate ids rejected");
-    ctx.check(message.find(path) != std::string::npos, "duplicate id message includes path");
-    ctx.check(message.find("duplicate entity id 7") != std::string::npos,
-          "duplicate id message includes id");
-    std::remove(path);
-}
-
-static void test_belief_rate_units_per_second_keys(TestContext& ctx) {
-    const char* path = "scenarios/__tmp_belief_units_test.json";
-    std::ofstream out(path);
-    out << "{\n"
-        << "  \"seed\": 7,\n"
-        << "  \"dt\": 0.5,\n"
-        << "  \"ticks\": 2,\n"
-        << "  \"obstacles\": [],\n"
-        << "  \"entities\": [\n"
-        << "    {\"id\": 0, \"type\": \"drone\", \"pos\": [0, 0], \"vel\": [0, 0], \"can_sense\": true},\n"
-        << "    {\"id\": 1, \"type\": \"ground\", \"pos\": [0, 0], \"vel\": [0, 0], \"can_track\": true},\n"
-        << "    {\"id\": 2, \"type\": \"target\", \"pos\": [1, 0], \"vel\": [0, 0], \"is_observable\": true}\n"
-        << "  ],\n"
-        << "  \"belief\": {\n"
-        << "    \"fresh_ticks\": 3,\n"
-        << "    \"stale_ticks\": 4,\n"
-        << "    \"uncertainty_growth_per_second\": 1.25,\n"
-        << "    \"confidence_decay_per_second\": 0.75\n"
-        << "  }\n"
-        << "}\n";
-    out.close();
-
-    Scenario s = load_scenario(path);
-    ctx.check(std::fabs(s.belief.uncertainty_growth_per_second - 1.25f) < 0.0001f,
-          "loads uncertainty growth per second");
-    ctx.check(std::fabs(s.belief.confidence_decay_per_second - 0.75f) < 0.0001f,
-          "loads confidence decay per second");
-
-    std::remove(path);
-}
-
-static std::string write_invalid_scenario(const std::string& body) {
-    std::ofstream out(kInvalidScenarioPath);
-    out << "{\n"
-        << "  \"seed\": 123,\n"
-        << "  \"ticks\": 10,\n"
-        << "  \"dt\": 1.0,\n"
-        << "  \"max_sensor_range\": 50.0,\n"
-        << "  \"channel\": {\"base_latency\": 3, \"per_distance\": 0.0, \"loss\": 0.1},\n"
-        << "  \"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": 10, \"uncertainty_growth\": 0.5, \"confidence_decay\": 0.05},\n"
-        << "  \"obstacles\": [],\n"
-        << "  \"entities\": [\n"
-        << "    {\"id\": 1, \"type\": \"drone\", \"pos\": [0, 0], \"vel\": [0, 0], \"can_sense\": true},\n"
-        << "    {\"id\": 2, \"type\": \"ground\", \"pos\": [5, 5], \"vel\": [0, 0], \"can_track\": true},\n"
-        << "    {\"id\": 3, \"type\": \"target\", \"pos\": [10, 10], \"vel\": [0, 0], \"is_observable\": true}\n"
-        << "  ],\n"
-        << body << "\n"
-        << "}\n";
-    return kInvalidScenarioPath;
-}
-
-static void check_invalid_field(TestContext& ctx,
-                                const std::string& name,
-                                const std::string& override_field,
-                                const std::string& expected_message_part) {
-    const std::string path = write_invalid_scenario(override_field);
-    bool caught = false;
-    std::string message;
-    try {
-        load_scenario(path);
-    } catch (const std::runtime_error& e) {
-        caught = true;
-        message = e.what();
-    }
-
-    ctx.check(caught, (name + " throws").c_str());
-    ctx.check(message.find(path) != std::string::npos, (name + " includes path").c_str());
-    ctx.check(message.find(expected_message_part) != std::string::npos, (name + " includes detail").c_str());
-}
-
-static void test_invalid_validations(TestContext& ctx) {
-    check_invalid_field(ctx, "ticks", "\"ticks\": -1", "ticks must be >= 0, got -1");
-    check_invalid_field(ctx, "dt", "\"dt\": 0", "dt must be > 0, got 0");
-    check_invalid_field(ctx, "max_sensor_range", "\"max_sensor_range\": 0", "max_sensor_range must be > 0, got 0");
-    check_invalid_field(ctx, "channel.base_latency_ticks", "\"channel\": {\"base_latency\": -1, \"per_distance\": 0.0, \"loss\": 0.1}", "channel.base_latency_ticks must be >= 0, got -1");
-    check_invalid_field(ctx, "channel.latency_per_distance", "\"channel\": {\"base_latency\": 3, \"per_distance\": -0.5, \"loss\": 0.1}", "channel.latency_per_distance must be >= 0, got -0.5");
-    check_invalid_field(ctx, "channel.loss_probability", "\"channel\": {\"base_latency\": 3, \"per_distance\": 0.0, \"loss\": 1.5}", "channel.loss_probability must be in [0, 1], got 1.5");
-    check_invalid_field(ctx, "belief.fresh_ticks", "\"belief\": {\"fresh_ticks\": -1, \"stale_ticks\": 10, \"uncertainty_growth\": 0.5, \"confidence_decay\": 0.05}", "belief.fresh_ticks must be >= 0, got -1");
-    check_invalid_field(ctx, "belief.stale_ticks", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": -1, \"uncertainty_growth\": 0.5, \"confidence_decay\": 0.05}", "belief.stale_ticks must be >= 0, got -1");
-    check_invalid_field(ctx, "belief.uncertainty_growth_per_second", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": 10, \"uncertainty_growth\": -0.1, \"confidence_decay\": 0.05}", "belief.uncertainty_growth_per_second must be >= 0, got -0.1");
-    check_invalid_field(ctx, "belief.confidence_decay_per_second", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": 10, \"uncertainty_growth\": 0.5, \"confidence_decay\": -0.05}", "belief.confidence_decay_per_second must be >= 0, got -0.05");
-    check_invalid_field(ctx, "engagement_rules.friendly_risk_radius", "\"engagement_rules\": {\"friendly_risk_radius\": -1}", "engagement_rules.friendly_risk_radius must be >= 0, got -1");
-    check_invalid_field(ctx, "engagement_rules.min_identity_confidence", "\"engagement_rules\": {\"min_identity_confidence\": 1.1}", "engagement_rules.min_identity_confidence must be in [0, 1], got 1.1");
-}
-
-static void test_engagement_rule_overrides(TestContext& ctx) {
-    const char* path = "tests/tmp_engagement_rules.json";
-    write_temp_scenario(path,
-        "{"
-        "\"seed\":1,"
-        "\"obstacles\":[],"
-        "\"engagement_rules\":{"
-        "\"protected_zone_center\":[2,3],"
-        "\"protected_zone_radius\":12,"
-        "\"friendly_risk_radius\":4,"
-        "\"default_effect_range\":90,"
-        "\"effect_range_step\":25,"
-        "\"max_track_uncertainty\":11,"
-        "\"min_identity_confidence\":0.7,"
-        "\"min_corroboration_count\":2"
-        "},"
-        "\"entities\":["
-        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0],\"can_sense\":true},"
-        "{\"id\":1,\"type\":\"ground\",\"pos\":[1,0],\"vel\":[0,0],\"can_track\":true},"
-        "{\"id\":2,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0],\"is_observable\":true}"
-        "]"
-        "}");
-
-    Scenario s = load_scenario(path);
-    ctx.check(std::fabs(s.engagement_rules.protected_zone_center.x - 2.0f) < 0.01f,
-          "override protected zone center.x");
-    ctx.check(std::fabs(s.engagement_rules.protected_zone_center.y - 3.0f) < 0.01f,
-          "override protected zone center.y");
-    ctx.check(std::fabs(s.engagement_rules.friendly_risk_radius - 4.0f) < 0.01f,
-          "override friendly risk radius");
-    ctx.check(std::fabs(s.engagement_rules.effect_range_step - 25.0f) < 0.01f,
-          "override effect range step");
-    ctx.check(s.engagement_rules.min_corroboration_count == 2,
-          "override min corroboration count");
-    std::remove(path);
-}
-
-static void test_invalid_effect_profile_reference(TestContext& ctx) {
-    const char* path = "tests/tmp_invalid_effect_profile_ref.json";
-    write_temp_scenario(path,
-        "{"
-        "\"seed\":1,"
-        "\"obstacles\":[],"
-        "\"effect_profiles\":["
-        "{\"name\":\"std\",\"range\":20,\"requires_los\":true,\"identity_threshold\":0.6,\"corroboration_threshold\":0.5,\"cooldown_ticks\":1,\"ammo_cost\":1}"
-        "],"
-        "\"entities\":["
-        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0],\"can_sense\":true,\"can_engage\":true,\"allowed_effect_profile_indices\":[9]},"
-        "{\"id\":1,\"type\":\"ground\",\"pos\":[1,0],\"vel\":[0,0],\"can_track\":true},"
-        "{\"id\":2,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0],\"is_observable\":true}"
-        "]"
-        "}");
-
-    bool caught = false;
-    std::string message;
-    try {
-        load_scenario(path);
-    } catch (const std::runtime_error& e) {
-        caught = true;
-        message = e.what();
-    }
-    ctx.check(caught, "invalid effect profile reference rejected");
-    ctx.check(message.find(path) != std::string::npos, "invalid profile ref includes path");
-    ctx.check(message.find("allowed_effect_profile_indices[0]") != std::string::npos,
-          "invalid profile ref includes offending field");
-    std::remove(path);
-}
-
-static void test_invalid_effect_profile_hit_probability(TestContext& ctx) {
-    const char* path = "tests/tmp_invalid_hit_probability.json";
-    write_temp_scenario(path,
-        "{"
-        "\"seed\":1,"
-        "\"obstacles\":[],"
-        "\"effect_profiles\":["
-        "{\"name\":\"std\",\"range\":20,\"hit_probability\":1.25}"
-        "],"
-        "\"entities\":["
-        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0],\"can_sense\":true},"
-        "{\"id\":1,\"type\":\"ground\",\"pos\":[1,0],\"vel\":[0,0],\"can_track\":true},"
-        "{\"id\":2,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0],\"is_observable\":true}"
-        "]"
-        "}");
-
-    bool caught = false;
-    std::string message;
-    try {
-        load_scenario(path);
-    } catch (const std::runtime_error& e) {
-        caught = true;
-        message = e.what();
-    }
-
-    ctx.check(caught, "invalid effect profile hit_probability rejected");
-    ctx.check(message.find(path) != std::string::npos, "invalid hit_probability includes path");
-    ctx.check(message.find("effect_profiles[0].hit_probability") != std::string::npos,
-          "invalid hit_probability includes field");
-    ctx.check(message.find("must be in [0, 1], got 1.25") != std::string::npos,
-          "invalid hit_probability includes range");
-    std::remove(path);
+static void test_rejects_duplicate_id(TestContext& ctx) {
+    const std::string json = R"({
+  "seed": 1,
+  "rounds": 3,
+  "map": { "rows": ["WWW", "W.W", "WWW"] },
+  "entities": [
+    { "id": 0, "kind": "operator", "pos": [1, 1], "team": 0 },
+    { "id": 0, "kind": "operator", "pos": [1, 1], "team": 1 }
+  ]
+})";
+    write_file(TEST_PATH, json);
+    bool threw = false;
+    try { load_scenario(TEST_PATH); }
+    catch (const std::runtime_error&) { threw = true; }
+    ctx.check(threw, "throws on duplicate entity id");
+    std::remove(TEST_PATH);
 }
 
 int main() {
     return run_test_suite("scenario", [](TestContext& ctx) {
-    test_load_default(ctx);
-    test_load_los_blocked(ctx);
-    test_missing_file(ctx);
-    test_multi_drone_accepted(ctx);
-    test_multi_ground_accepted(ctx);
-    test_custom_role_accepted(ctx);
-    test_capability_override(ctx);
-    test_missing_capabilities_rejected(ctx);
-    test_duplicate_entity_ids_rejected(ctx);
-    test_belief_rate_units_per_second_keys(ctx);
-    test_engagement_rule_overrides(ctx);
-    test_invalid_validations(ctx);
-    test_invalid_effect_profile_reference(ctx);
-    test_invalid_effect_profile_hit_probability(ctx);
+        test_loads_small_office_breach(ctx);
+        test_minimal_valid_scenario(ctx);
+        test_rejects_out_of_bounds(ctx);
+        test_rejects_duplicate_id(ctx);
     });
 }

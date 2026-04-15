@@ -1,26 +1,27 @@
 #pragma once
 
 #include "game_mode.h"
+
 #include <vector>
 
-// Asset Protection mode: each team has an asset entity to protect.
-// Destroy the enemy's asset to win. If time runs out, the team with the
-// healthier asset (by percentage of max vitality) wins.
+// Asset Protection mode: each team has one or more asset entities to protect.
+// Destroy the enemy asset to win. If the round limit is reached, the team
+// whose asset has the higher HP percentage wins.
 struct AssetProtectionMode : GameMode {
     void init(const Scenario& scn,
               const std::vector<ScenarioEntity>& entities) override;
-    void on_entity_damaged(int tick, EntityId target,
-                           int vitality_before, int vitality_after) override;
-    GameModeResult on_tick_end(int tick,
-                               const std::vector<ScenarioEntity>& entities) override;
+    void on_entity_damaged(int round, EntityId target,
+                           int hp_before, int hp_after) override;
+    GameModeResult on_round_end(int round,
+                                const std::vector<ScenarioEntity>& entities) override;
 
 private:
     struct AssetInfo {
         EntityId entity_id = 0;
         int team = -1;
-        int max_vitality = 100;
+        int max_hp = 100;
         bool destroyed = false;
     };
     std::vector<AssetInfo> assets_;
-    int total_ticks_ = 0;
+    int total_rounds_ = 0;
 };

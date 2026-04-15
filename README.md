@@ -1,356 +1,120 @@
 # xushi 虚实
 
-Multi-agent tactical simulation engine — sensor detection, belief tracking, lossy comms, and weapons engagement in a deterministic tick loop.
+Deterministic, turn-based tactical shooter on a discrete grid. Squads of
+operators fight with rifles, drones, and cyber actions across an
+information-rich physical map.
 
-> 虚实 (xūshí) is a concept from Sun Tzu's *Art of War* — "the empty and the full," or "the false and the real." It describes the gap between what appears to be true and what actually is. This simulation models exactly that: agents build a perceived picture from noisy sensors and lossy comms, while ground truth remains separate and hidden.
+> 虚实 (xūshí) — "the empty and the full," from Sun Tzu. Agents act on a
+> team belief built from noisy sensors, decaying tracks, and adversarial
+> cyber — while truth state stays hidden.
 
-## What It Does
+The authoritative specification is
+[`turn_based_tactical_contract.md`](./turn_based_tactical_contract.md). If
+the code and the contract disagree, the contract wins until amended.
 
-- **Tick-based discrete simulation** — configurable timestep and seed, fully deterministic across platforms
-- **Multi-agent architecture** — sensors detect, trackers maintain belief states, engagers fire
-- **Sensing model** — line-of-sight with rectangular obstacles, range-dependent confidence and position noise, miss rates, false positives, class confusion
-- **Belief tracking** — track lifecycle (FRESH → STALE → EXPIRED), confidence decay, uncertainty growth, negative evidence, corroboration from multiple sources
-- **Lossy communications** — message latency (base + distance-scaled), probabilistic message loss
-- **Engagement system** — 14 tactical gates evaluated before any shot (range, LOS, staleness, uncertainty, identity confidence, corroboration, ammo, cooldown, ROE, and more)
-- **Movement** — constant velocity, waypoint navigation (loop/stop/branch modes), patrol policies
-- **Task system** — automatic VERIFY task assignment for degraded tracks
-- **Deterministic replay** — NDJSON event log, byte-for-byte identical across runs with same seed
-- **Headless-first workflows** — deterministic CLI runner plus repeatable batch self-play sweeps
+## Status
 
-## Quick Start
+Migration from a previous continuous-tick sensor/engagement simulator is in
+progress. What lands in the current tree:
 
-**Requirements:** C++17 compiler (GCC, Clang, Apple Clang, or MSVC), CMake 3.20+. No external dependencies for core.
+- Grid primitives (`src/grid.{h,cpp}`): typed cells (FLOOR/WALL/COVER),
+  edge-based doors (OPEN/CLOSED/LOCKED), Bresenham LOS, 8-connected
+  movement, BFS room detection.
+- Round / phase driver (`src/sim_engine.{h,cpp}`): deterministic
+  round_start → support → activations → round_end loop with AP and
+  support-AP ledgers, initiative alternation, activation ordering.
+- Team belief state with track lifecycle (FRESH → STALE → EXPIRED),
+  per-round decay, spoof injection & drone-scan clearing.
+- Binary jam comm model (`src/comm.{h,cpp}`): cell-and-radius jams with
+  round durations.
+- Deterministic replay as NDJSON + FNV-1a integer-only world hash.
+- Game modes: `asset_protection` and `office_breach` (win conditions,
+  timeout tiebreakers).
+- First scenario: `scenarios/small_office_breach.json` (16×12, 2+2
+  operators, 1+1 drones, camera/terminal/light devices, one door).
 
-**Linux / macOS:**
+What is deliberately **not** in this drop and will land in follow-up steps:
+operator actions (move/shoot/overwatch/peek/breach/deploy/interact), drone
+control, cyber actions, hit probability resolution, noise events, RL
+observation rasterization, and a grid-aware viewer. See
+`docs/migration_status.md`.
+
+## Build & run
+
+Requirements: C++17 compiler, CMake 3.20+.
+
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
+
+# Run the scenario (writes scenarios/small_office_breach.replay).
+./build/xushi scenarios/small_office_breach.json
+
+# Quiet mode (suppresses stdout for CI / batch).
+./build/xushi --quiet scenarios/small_office_breach.json
 ```
 
-**Windows (Visual Studio 2022):**
-```bash
-cmake -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Release -j %NUMBER_OF_PROCESSORS%
-```
+## Tests
 
-```bash
-# Run a scenario
-./build/xushi scenarios/default.json          # Linux/macOS
-build\Release\xushi.exe scenarios\default.json  # Windows
-
-# Benchmark mode (suppresses per-tick output)
-./build/xushi --bench scenarios/default.json
-```
-
-The simulation writes a `.replay` file alongside the scenario (e.g., `scenarios/default.replay`).
-
-### Headless Runner
-
-Use the main `xushi` binary as the default execution path for CI, tuning, and regression runs:
-
-```bash
-# Single scenario (headless simulation)
-./build/xushi scenarios/default.json
-
-# Deterministic benchmark pass for performance tracking
-./build/xushi --bench scenarios/bench/medium.json
-```
-
-### Batch Self-Play Runner (headless)
-
-Use shell loops to run repeated seeded matches and archive logs/replays for analysis:
-
-```bash
-mkdir -p runs/self_play
-for seed in 9001 9013 9029 9049; do
-  out="runs/self_play/medium_${seed}.json"
-  python -c "import json; s=json.load(open('scenarios/bench/medium.json')); s['seed']=${seed}; json.dump(s, open('${out}','w'), indent=2)"
-  ./build/xushi --bench "${out}" > "runs/self_play/bench_${seed}.log"
-done
-```
-
-### Run Tests
+Custom test harness under CTest. 9 suites, all green:
 
 ```bash
 ctest --test-dir build --output-on-failure
 ```
 
-## Scenarios
+| Test      | Covers                                                    |
+|-----------|-----------------------------------------------------------|
+| rng       | splitmix64 determinism                                    |
+| json      | Zero-dep JSON parser                                      |
+| grid      | Bresenham LOS, cover transparency, door edges, rooms, 8-neighbors |
+| comm      | Binary jam add / tick-down / coverage                     |
+| belief    | Sighting ingest, FRESH→STALE→EXPIRED, spoof clearing      |
+| replay    | NDJSON round-trip, event schema                           |
+| scenario  | JSON loading, validation, `small_office_breach.json`      |
+| contract  | Round phase order, initiative alternation, AP refresh, determinism |
+| game_mode | Factory, asset_protection timeout, office_breach win conds |
 
-### Included Scenarios
+## Scenario format (v1)
 
-| File | Description |
-|------|-------------|
-| `default.json` | Basic 3-entity setup with obstacle and engagement profile |
-| `multi_agent.json` | Multiple sensors and trackers |
-| `dual_patrol.json` | Two-sensor patrol coverage |
-| `waypoint_patrol.json` | Target following a waypoint loop |
-| `branch_waypoint.json` | Stochastic waypoint branching |
-| `los_blocked.json` | Obstacles blocking sensor LOS |
-| `noisy_perception.json` | Miss rate and false positives enabled |
-| `distance_comms.json` | Distance-scaled communication latency |
-| `task_verify.json` | VERIFY task assignment |
-| `mixed_era.json` | Mixed-capability entities on same unit |
-| `patrol_policy.json` | Policy-driven patrol routes |
-| `benchmark_dense.json` | 1000-tick stress test with 5 targets and 8 obstacles |
-| `bench/small.json` | Low-scale benchmark tier (12 entities, 6 obstacles, low sensing density) |
-| `bench/medium.json` | Medium benchmark tier (24 entities, 12 obstacles, moderate sensing density) |
-| `bench/large.json` | Large benchmark tier (48 entities, 24 obstacles, high sensing density) |
-| `bench/xlarge.json` | Extra-large benchmark tier (96 entities, 48 obstacles, very high sensing density/message load) |
+A scenario is a JSON file with the following top-level fields:
 
-### Benchmark Tiering Notes
+| Field       | Type     | Notes                                                       |
+|-------------|----------|-------------------------------------------------------------|
+| `seed`      | int      | splitmix64 seed                                             |
+| `rounds`    | int      | Number of rounds (default 12)                               |
+| `map.rows`  | string[] | ASCII grid. Chars: `.` FLOOR, `W` WALL, `C` COVER           |
+| `map.doors` | array    | `{a, b, state}` with `a`, `b` adjacent cells, state open/closed/locked |
+| `entities`  | array    | Operators and drones with `id`, `kind`, `pos`, `team`, etc. |
+| `devices`   | array    | Cameras, relays, terminals, light switches                  |
+| `belief`    | object   | Track tuning — `fresh_rounds`, `stale_rounds`, etc.         |
+| `game_mode` | object   | Optional — `type: "office_breach"` or `"asset_protection"`  |
 
-The `scenarios/bench/*.json` files are designed for scale profiling with all non-scale knobs fixed:
+See `scenarios/small_office_breach.json` for a complete example.
 
-- `dt`, `ticks`, `max_sensor_range`
-- `channel`, `belief`, and `perception` configuration
-- engagement `effect_profiles`
-
-Only these dimensions change per tier:
-
-- total entity count
-- obstacle count
-- sensing density (fraction of entities with `can_sense`)
-
-Each tier uses a deterministic fixed seed:
-
-- `small`: `1103`
-- `medium`: `2203`
-- `large`: `3301`
-- `xlarge`: `4409`
-
-For variance tracking, run the same tier with an additional fixed seed set (for example: `9001`, `9013`, `9029`) by cloning a tier file and changing only `seed`.
-
-Expected growth trends when running `--bench`:
-
-- **Near-linear signs**: movement updates, obstacle iteration, and baseline bookkeeping as entity/obstacle counts scale.
-- **Superlinear signs**: sensing + comm integration can trend superlinear as sensor density rises (more sensor-target pairs and more observation message fan-out to trackers).
-- **Most pronounced jump**: `xlarge` should show the strongest message-pressure effects due to both high entity count and high sensing density.
-
-### Configuration Reference
-
-All scenarios are JSON files. Top-level fields:
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `seed` | int | *required* | RNG seed for determinism |
-| `dt` | float | `1.0` | Timestep in seconds |
-| `ticks` | int | `100` | Simulation duration |
-| `max_sensor_range` | float | `80.0` | Maximum detection range (meters) |
-| `obstacles` | array | `[]` | Rectangular LOS blockers: `{"min": [x,y], "max": [x,y]}` |
-| `entities` | array | *required* | Entity definitions (see below) |
-| `channel` | object | see below | Communication channel config |
-| `belief` | object | see below | Track lifecycle config |
-| `perception` | object | see below | Sensor noise config |
-| `effect_profiles` | array | `[]` | Weapons/engagement profiles |
-| `policy` | object | none | Movement policy config |
-
-A valid scenario requires at least one entity with `can_sense`, one with `can_track`, and one with `is_observable`.
-
-### Entity Fields
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `id` | int | *required* | Unique entity ID |
-| `type` | string | *required* | Display name / role label |
-| `pos` | [x, y] | *required* | Starting position |
-| `vel` | [x, y] | *required* | Initial velocity |
-| `can_sense` | bool | `false` | Runs sensing pass |
-| `can_track` | bool | `false` | Maintains belief state |
-| `is_observable` | bool | `false` | Can be detected by sensors |
-| `can_engage` | bool | `false` | Can execute engagement actions |
-| `class_id` | int | `0` | Ground truth class for identification |
-| `vitality` | int | `100` | Current health points |
-| `max_vitality` | int | `100` | Maximum health points |
-| `ammo` | int | `0` | Ammunition remaining |
-| `cooldown_ticks_remaining` | int | `0` | Ticks until next engagement allowed |
-| `allowed_effect_profile_indices` | int[] | `[]` | Indices into `effect_profiles` |
-| `waypoints` | [[x,y], ...] | none | Waypoint path (requires `speed`) |
-| `speed` | float | — | Movement speed (required with waypoints) |
-| `waypoint_mode` | string | `"stop"` | `"stop"` or `"loop"` |
-| `branch_points` | object | none | `{"waypoint_idx": [successor_indices]}` |
-
-### Channel Config
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `base_latency` | int | `3` | Minimum delivery delay (ticks) |
-| `per_distance` | float | `0.0` | Additional latency per meter |
-| `loss` | float | `0.1` | Message drop probability [0, 1] |
-
-### Belief Config
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `fresh_ticks` | int | `5` | Ticks a track stays FRESH |
-| `stale_ticks` | int | `10` | Ticks a track stays STALE before expiry |
-| `uncertainty_growth_per_second` | float | `0.5` | Position uncertainty growth (m/s) |
-| `confidence_decay_per_second` | float | `0.05` | Confidence decay rate |
-| `negative_evidence_factor` | float | `0.3` | Confidence reduction when in sensor range but undetected |
-
-### Perception Config
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `miss_rate` | float | `0.0` | Detection miss probability [0, 1] |
-| `false_positive_rate` | float | `0.0` | Phantom detection rate per sensor per tick |
-| `class_confusion_rate` | float | `0.0` | Probability of misidentifying target class |
-
-### Effect Profiles
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `name` | string | *required* | Profile identifier |
-| `range` | float | *required* | Maximum engagement range |
-| `requires_los` | bool | `false` | Require line of effect to target |
-| `identity_threshold` | float | `0.0` | Minimum identity confidence to fire |
-| `corroboration_threshold` | float | `0.0` | Minimum corroboration to fire |
-| `hit_probability` | float | `1.0` | Probability of hit on engagement |
-| `vitality_delta_min` | int | `0` | Min vitality change (negative = damage) |
-| `vitality_delta_max` | int | `= min` | Max vitality change |
-| `cooldown_ticks` | int | `0` | Cooldown imposed after firing |
-| `ammo_cost` | int | `0` | Ammo consumed per engagement |
-| `roe_flags` | string[] | `[]` | Rules of engagement constraint flags |
-
-### Policy Config
-
-Currently supports the `patrol` type:
-
-```json
-"policy": {
-  "type": "patrol",
-  "routes": {
-    "0": [[10, 10], [90, 10], [90, 50], [10, 50]]
-  }
-}
-```
-
-Routes map entity ID (as string key) to a list of patrol waypoints.
-
-## Architecture
-
-### Tick Loop
-
-Each simulation tick executes these phases in order:
-
-1. **Cooldowns** — decrement engagement cooldown timers
-2. **Movement** — task override > policy override > waypoint/velocity
-3. **Sensing** — LOS + range checks, generate noisy observations, send messages to trackers, apply negative evidence, generate false positives
-4. **Communication** — deliver messages whose latency has elapsed
-5. **Belief** — integrate observations into tracks, decay confidence, grow uncertainty, expire old tracks
-6. **Actions** — adjudicate pending action requests (designate, clear, engage, BDA)
-7. **Tasks** — check task completion (arrival + corroboration), assign VERIFY tasks for degraded tracks
-8. **World hash** — every 10 ticks, FNV-1a hash of all positions + belief states
-
-### Track Lifecycle
-
-```
-Detection → FRESH ──(fresh_ticks)──→ STALE ──(stale_ticks)──→ EXPIRED (removed)
-             confidence ≈ 1.0         confidence decays          confidence → 0
-             uncertainty low           uncertainty grows
-```
-
-Tracks are updated by new observations, which reset confidence and position estimates. Negative evidence (target not detected while in sensor range) actively reduces confidence.
-
-### Engagement Gates
-
-Before an `EngageTrack` action is allowed, 14 gates are evaluated as a bitmask — multiple can fail simultaneously:
-
-`NoCapability` · `Cooldown` · `OutOfAmmo` · `TrackTooStale` · `TrackTooUncertain` · `IdentityTooWeak` · `NeedsCorroboration` · `OutOfRange` · `NoLineOfEffect` · `ProtectedZone` · `FriendlyRisk` · `ActorDisabled` · `ROEBlocked` · `TrackNotFound`
-
-### Source Layout
+## Source layout
 
 ```
 src/
-  main.cpp              CLI entry point with replay logging
-  sim_engine.{h,cpp}    tick loop, action adjudication
-  sim.{h,cpp}           high-level sim interface
-  scenario.{h,cpp}      JSON scenario loading + validation
-  sensing.{h,cpp}       LOS detection, noise model
-  belief.{h,cpp}        track management, decay, negative evidence
-  comm.{h,cpp}          message queuing, latency, loss
-  engagement.{h,cpp}    tactical gate evaluation
-  movement.h            waypoint navigation, constant velocity
-  patrol_policy.h       patrol policy implementation
-  policy.h              policy interface
-  action.h              action types, gate failure bitmask
-  task.h                task definitions (VERIFY)
-  map.{h,cpp}           obstacle map, LOS raycasting
-  replay.{h,cpp}        NDJSON replay writer/reader
-  replay_events.h       event serialization factories
-  json.{h,cpp}          zero-dependency JSON parser
-  rng.h                 splitmix64 RNG
-  types.h               Vec2, EntityId
-  constants.h           tuning constants
-  invariants.h          debug assertions
-  stats.{h,cpp}         performance counters
-  path_resolve.{h,cpp}  replay path resolution
-
-viewer/
-  CMakeLists.txt        optional UI subproject (enabled with XUSHI_ENABLE_VIEWER)
-  main.cpp              viewer entry point
-  viewer.h              state machine, rendering
-  viewer_load.cpp       replay file loading
-  viewer_update.cpp     input handling, playback controls
-  viewer_draw.cpp       raylib rendering
+  grid.{h,cpp}           GridPos, CellType, DoorEdge, GridMap, LOS, rooms
+  sim_engine.{h,cpp}     Round/phase driver, AP ledgers, activation order
+  scenario.{h,cpp}       Grid-based scenario JSON loader
+  belief.{h,cpp}         Track, Sighting, FRESH/STALE/EXPIRED lifecycle
+  belief_state.h         Per-team belief store
+  comm.{h,cpp}           Binary jam model
+  game_mode.{h,cpp}      Interface + factory
+  asset_protection_mode.{h,cpp}
+  office_breach_mode.{h,cpp}
+  replay.{h,cpp}         NDJSON replay writer/reader
+  replay_events.h        Event factories for round_start, round_end, track_update, world_hash, ...
+  world_hash.{h,cpp}     Canonical FNV-1a (integer-only inputs)
+  json.{h,cpp}           Zero-dep JSON parser
+  rng.h                  splitmix64
+  types.h                EntityId + grid.h include
+  constants.h            Contract-defined constants
+  invariants.h           Debug invariant assertions
+  main.cpp               CLI entry point
 ```
 
-## Optional Viewer Subproject
-
-The replay viewer remains available, but it is intentionally isolated from the core build so headless simulation has zero UI dependency surface by default.
-
-- Default configure/build: **does not** touch `viewer/` or raylib.
-- To build viewer explicitly: enable `-DXUSHI_ENABLE_VIEWER=ON`.
-
-```bash
-# Linux / macOS
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DXUSHI_ENABLE_VIEWER=ON
-cmake --build build -j$(nproc)
-./build/xushi_viewer scenarios/default.replay
-```
-
-```bash
-# Windows (Visual Studio 2022)
-cmake -B build -G "Visual Studio 17 2022" -A x64 -DXUSHI_ENABLE_VIEWER=ON
-cmake --build build --config Release
-build\Release\xushi_viewer.exe scenarios\default.replay
-```
-
-If raylib is not installed and `XUSHI_ENABLE_VIEWER=ON` is set, CMake fails fast with a clear error.
-
-## Testing
-
-17 test files using a custom test harness (no external framework), all run via CTest.
-
-```bash
-ctest --test-dir build --output-on-failure
-```
-
-| Test | Covers |
-|------|--------|
-| `test_los` | Line-of-sight raycasting through obstacles |
-| `test_rng` | splitmix64 determinism and distribution |
-| `test_sensing` | Detection with range, noise, miss rate |
-| `test_comm` | Message latency, loss, delivery |
-| `test_belief` | Track update, decay, expiration, negative evidence |
-| `test_json` | JSON parser correctness |
-| `test_scenario` | Scenario loading and validation |
-| `test_replay` | NDJSON replay write/read round-trip |
-| `test_replay_path_resolution` | Replay file path derivation |
-| `test_movement` | Waypoint navigation, loop/stop, branching |
-| `test_determinism` | Same seed → identical world hashes |
-| `test_golden` | Golden-file comparison for known outputs |
-| `test_parity` | Simulation parity checks |
-| `test_policy` | Patrol policy waypoint cycling |
-| `test_action` | Action request adjudication, designation lifecycle |
-| `test_engagement` | Engagement gate evaluation |
-
-## CI
-
-GitHub Actions runs on every push and PR:
-
-1. **build-and-test** — Ubuntu (GCC + Clang) and macOS (Apple Clang), Debug + Release, all tests
-2. **determinism-replay-diff** — runs 4 scenarios twice, diffs replay files byte-for-byte
-3. **lint** — clang-tidy + cppcheck on all source
-4. **scenario-validation** — validates JSON syntax and loads all scenarios
-5. **viewer-build** — builds raylib from source, verifies `xushi_viewer` compiles
+The previous continuous-tick engine (sensing, engagement gates, AABB
+obstacles, message latency, VERIFY tasks, waypoint movement) has been
+removed in this migration step.

@@ -1,92 +1,53 @@
 #pragma once
 
-#include "scenario.h"
-#include "constants.h"
-#include "stats.h"
 #include "belief.h"
 #include "belief_state.h"
-#include "truth_state.h"
-#include "action.h"
 #include "comm.h"
-#include "movement.h"
-#include "policy.h"
-#include "map.h"
+#include "game_mode.h"
+#include "grid.h"
 #include "rng.h"
-#include "task.h"
+#include "scenario.h"
+#include "types.h"
+
 #include <cstdint>
-#include <functional>
 #include <map>
 #include <string>
-#include <unordered_set>
 #include <unordered_map>
 #include <vector>
 
-#include "game_mode.h"
+// Hook interface for side effects (e.g. replay, logging, stats). All methods
+// are no-ops by default. Callers override only the hooks they care about.
+struct RoundHooks {
+    virtual ~RoundHooks() = default;
 
-// Hook interface for side effects. All methods are no-ops by default.
-// Callers override only the hooks they care about.
-struct TickHooks {
-    virtual ~TickHooks() = default;
-
-    // Movement
-    virtual void on_entity_moved(int /*tick*/, EntityId /*id*/, Vec2 /*pos*/) {}
-    virtual void on_waypoint_arrival(int /*tick*/, EntityId /*id*/, int /*waypoint_index*/, Vec2 /*pos*/) {}
-
-    // Sensing
-    virtual void on_detection(int /*tick*/, const Observation& /*obs*/) {}
-    virtual void on_miss(int /*tick*/, EntityId /*sensor*/) {}
-    virtual void on_false_positive(int /*tick*/, EntityId /*sensor*/, const Observation& /*phantom*/) {}
-
-    // Communication
-    virtual void on_msg_sent(int /*tick*/, EntityId /*sender*/, EntityId /*receiver*/, int /*delivery_tick*/) {}
-    virtual void on_msg_dropped(int /*tick*/, EntityId /*sender*/, EntityId /*receiver*/) {}
-    virtual void on_msg_delivered(int /*tick*/, EntityId /*sender*/, EntityId /*receiver*/) {}
-
-    // Belief
-    virtual void on_track_update(int /*tick*/, EntityId /*owner*/, const Track& /*trk*/) {}
-    virtual void on_track_expired(int /*tick*/, EntityId /*owner*/, EntityId /*target*/) {}
-    virtual void on_belief_invariant_check(const BeliefState& /*belief*/) {}
-
-    // Actions
-    virtual void on_action_resolved(int /*tick*/, const ActionResult& /*result*/) {}
-    virtual void on_effect_resolved(int /*tick*/, const EffectOutcome& /*outcome*/) {}
-
-    // Periodic snapshots
-    virtual void on_world_hash(int /*tick*/, uint64_t /*hash*/) {}
-    virtual void on_stats_snapshot(int /*tick*/, const SystemStats& /*stats*/) {}
-
-    // Phase timing (called once per phase per tick)
+    // Phase timing: called after each phase within a round.
     virtual void on_phase_timing(const char* /*phase*/, double /*elapsed_us*/) {}
 
-    // Position invariant check (after movement)
-    virtual void on_positions_check(const std::vector<ScenarioEntity>& /*entities*/) {}
+    // Round boundaries.
+    virtual void on_round_started(int /*round*/, int /*initiative_team*/) {}
+    virtual void on_round_ended(int /*round*/) {}
 
-    // Game mode
-    virtual void on_game_mode_end(int /*tick*/, const GameModeResult& /*result*/) {}
+    // Belief / tracks.
+    virtual void on_track_update(int /*round*/, int /*team*/, const Track& /*trk*/) {}
+    virtual void on_track_expired(int /*round*/, int /*team*/, EntityId /*target*/) {}
 
-    // Tasking
-    virtual void on_task_assigned(int /*tick*/, const Task& /*task*/, const ScenarioEntity& /*assignee*/) {}
-    virtual void on_task_completed(int /*tick*/, EntityId /*assignee*/, EntityId /*target*/, bool /*corroborated*/) {}
+    // Determinism / game mode.
+    virtual void on_world_hash(int /*round*/, uint64_t /*hash*/) {}
+    virtual void on_game_mode_end(int /*round*/, const GameModeResult& /*result*/) {}
 };
 
+// Per-round state used by the phase driver (contract §2).
 class SimEngine {
 public:
     enum class RoundPhase {
         Idle,
         RoundStart,
-        Cooldowns,
+        SupportPhase,
         Activations,
-        SupportPublicationGate,
-        Communication,
-        Belief,
-        ReactionResolution,
-        Tasks,
-        PeriodicSnapshots,
-        RoundEnd
+        RoundEnd,
     };
 
     struct RoundState {
-        int round_tick = -1;
         int round_number = -1;
         int initiative_team = -1;
         RoundPhase phase = RoundPhase::Idle;
@@ -97,7 +58,7 @@ public:
         int round_number = -1;
         int initiative_team = -1;
         size_t activation_cursor = 0;
-        std::vector<size_t> activation_order;
+        std::vector<size_t> activation_order;  // indices into entities_
         std::unordered_map<EntityId, int> operator_ap;
         std::unordered_map<EntityId, int> operator_ap_max;
         std::unordered_map<int, int> support_ap;
@@ -105,106 +66,60 @@ public:
         std::unordered_map<int, int> support_ap_spent;
     };
 
-    void init(const Scenario& scn, Policy* policy = nullptr,
-              GameMode* game_mode = nullptr);
+    void init(const Scenario& scn, GameMode* game_mode = nullptr);
 
-    // Legacy one-shot step API now delegates to explicit round phases.
-    void step(int tick, TickHooks& hooks);
+    // Drive one full round (all phases). The caller should invoke this
+    // repeatedly until game_mode_result().finished or until
+    // round_state().round_number + 1 >= scenario rounds.
+    void run_round(int round, RoundHooks& hooks);
 
-    // Round/activation authoritative stepping API.
-    void begin_round(int tick, TickHooks& hooks);
-    bool step_activation(int tick, TickHooks& hooks); // true when all activations done
-    void finalize_round(int tick, TickHooks& hooks);
+    // Phase-level API for tests / fine-grained control.
+    void begin_round(int round, RoundHooks& hooks);
+    bool step_activation(int round, RoundHooks& hooks);  // true when all activations done
+    void finalize_round(int round, RoundHooks& hooks);
 
     const RoundState& round_state() const { return round_state_; }
+    const RoundContext& round_context() const { return round_context_; }
 
-    // Action queue — policies/controllers push requests, engine adjudicates
-    void submit_action(const ActionRequest& req);
-    const std::vector<DesignationRecord>& get_designations() const { return designations_; }
-
-    // Accessors for result extraction
+    // Accessors.
     const std::vector<ScenarioEntity>& get_entities() const { return entities_; }
-    const std::map<EntityId, BeliefState>& get_beliefs() const { return beliefs_.states(); }
-    const std::map<EntityId, Task>& get_active_tasks() const { return active_tasks_; }
-    SystemStats& stats() { return stats_; }
-    const SystemStats& stats() const { return stats_; }
-    int tasks_assigned() const { return tasks_assigned_; }
-    int tasks_completed() const { return tasks_completed_; }
+    std::vector<ScenarioEntity>& entities() { return entities_; }
+    const std::map<int, BeliefState>& get_beliefs() const { return beliefs_.states(); }
+    const GridMap& grid() const { return grid_; }
+    const CommSystem& comms() const { return comms_; }
 
-    // World hash for determinism checking
-    uint64_t compute_world_hash() const;
-
-    // Game mode result from the most recent tick (default: not finished)
-    bool has_game_mode() const { return game_mode_ != nullptr; }
-    const GameModeResult& game_mode_result() const { return last_game_mode_result_; }
     ScenarioEntity* find_entity(EntityId id);
     const ScenarioEntity* find_entity(EntityId id) const;
 
-private:
-    struct GridCoord {
-        int x = 0;
-        int y = 0;
-        bool operator==(const GridCoord& other) const { return x == other.x && y == other.y; }
-    };
-    struct GridCoordHash {
-        size_t operator()(const GridCoord& c) const;
-    };
+    uint64_t compute_world_hash() const;
 
-    void tick_cooldowns();
-    void tick_activation(int tick, size_t activation_index, TickHooks& hooks);
-    void tick_communication(int tick, TickHooks& hooks, std::vector<Message>& delivered);
-    void tick_belief(int tick, TickHooks& hooks, const std::vector<Message>& delivered);
-    void tick_tasks(int tick, TickHooks& hooks);
-    void tick_support_publication_gate(int tick, TickHooks& hooks);
-    void tick_reaction_resolution(int tick, TickHooks& hooks);
-    void tick_periodic_snapshots(int tick, TickHooks& hooks);
-    void move_toward_target(ScenarioEntity& entity, const Vec2& target) const;
-    void rebuild_entity_index();
-    void rebuild_spatial_bins(float cell_size);
-    void for_each_candidate_in_range(const Vec2& center, float range,
-                                     const std::function<void(size_t)>& fn) const;
+    bool has_game_mode() const { return game_mode_ != nullptr; }
+    const GameModeResult& game_mode_result() const { return last_game_mode_result_; }
+
+private:
+    void reset_round_context(int round);
+    void build_activation_order_for_round();
+
+    void phase_round_start();
+    void phase_support();
+    void phase_round_end(int round, RoundHooks& hooks);
 
     void require_phase(RoundPhase expected) const;
-    void advance_phase(RoundPhase next_phase);
-    void reset_round_context(int tick);
-    void build_activation_order_for_round();
-    bool is_action_type_allowed_in_phase(ActionType type, RoundPhase phase) const;
-    bool is_support_action(ActionType type) const;
-    bool is_operator_action(ActionType type) const;
+    void advance_phase(RoundPhase p) { round_state_.phase = p; }
 
     const Scenario* scn_ = nullptr;
-    Map map_;
+    GridMap grid_;
     std::vector<ScenarioEntity> entities_;
-    std::vector<ScenarioEntity*> sensors_;
-    std::vector<ScenarioEntity*> trackers_;
-    std::vector<ScenarioEntity*> observables_;
-    std::vector<ScenarioEntity*> trackers_no_team_;
-    std::unordered_map<int, std::vector<ScenarioEntity*>> trackers_by_team_;
+    std::vector<int> team_ids_;  // deterministic sorted unique set
+
     Rng rng_{0};
     CommSystem comms_;
     BeliefStateStore beliefs_;
-    TruthState truth_state_;
-    std::map<EntityId, Task> active_tasks_;
-    int tasks_assigned_ = 0;
-    int tasks_completed_ = 0;
-    SystemStats stats_;
-    NullPolicy null_policy_;
-    Policy* policy_ = nullptr;
-    // Game mode
+    BeliefConfig belief_config_{};
+
     GameMode* game_mode_ = nullptr;
     GameModeResult last_game_mode_result_;
 
-    // Action system
-    std::vector<ActionRequest> pending_actions_;
-    std::vector<DesignationRecord> designations_;
-    uint64_t next_designation_id_ = 1;
-    std::unordered_map<EntityId, size_t> entity_index_;
-    float spatial_cell_size_ = 1.0f;
-    std::unordered_map<GridCoord, std::vector<size_t>, GridCoordHash> spatial_bins_;
-    void adjudicate_actions_for_type(int tick, TickHooks& hooks, ActionType type);
-    const Scenario::EffectProfile* find_effect_profile(uint32_t index) const;
-
     RoundState round_state_;
     RoundContext round_context_;
-    int next_round_number_ = 0;
 };

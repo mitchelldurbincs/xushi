@@ -1,60 +1,40 @@
 #pragma once
 
 #include "belief.h"
-#include "scenario.h"
-#include "observation_state.h"
+
 #include <map>
 
+// Per-team belief store. Contract §8: belief is scoped to the team, not
+// the unit. Indexed by team id (int). Unaffiliated trackers use team = -1.
 class BeliefStateStore {
 public:
     void clear() { beliefs_.clear(); }
 
-    void init_trackers(const std::vector<ScenarioEntity*>& trackers) {
+    // Ensure a belief state exists for every given team id.
+    void init_teams(const std::vector<int>& team_ids) {
         beliefs_.clear();
-        for (auto* t : trackers)
-            beliefs_[t->id] = BeliefState{};
+        for (int team : team_ids)
+            beliefs_[team];
     }
 
-    std::map<EntityId, BeliefState>& states() { return beliefs_; }
-    const std::map<EntityId, BeliefState>& states() const { return beliefs_; }
+    std::map<int, BeliefState>& states() { return beliefs_; }
+    const std::map<int, BeliefState>& states() const { return beliefs_; }
 
-    BeliefState* find(EntityId owner) {
-        auto it = beliefs_.find(owner);
-        if (it == beliefs_.end()) return nullptr;
-        return &it->second;
+    BeliefState* find(int team) {
+        auto it = beliefs_.find(team);
+        return it == beliefs_.end() ? nullptr : &it->second;
+    }
+    const BeliefState* find(int team) const {
+        auto it = beliefs_.find(team);
+        return it == beliefs_.end() ? nullptr : &it->second;
     }
 
-    const BeliefState* find(EntityId owner) const {
-        auto it = beliefs_.find(owner);
-        if (it == beliefs_.end()) return nullptr;
-        return &it->second;
-    }
-
-    void apply_local_observation(EntityId owner, const Observation& obs, int tick) {
-        auto* belief = find(owner);
+    void apply_sighting(int team, const Sighting& s, int round) {
+        auto* belief = find(team);
         if (belief)
-            belief->update(obs, tick);
-    }
-
-    void apply_published_observation(EntityId owner, const SharedObservationPayload& payload, int tick) {
-        auto* belief = find(owner);
-        if (belief)
-            belief->update(to_observation(payload), tick);
-    }
-
-    void apply_negative_evidence(EntityId owner,
-                                 Vec2 observer_pos,
-                                 float sensor_range,
-                                 const Map& map,
-                                 const std::vector<EntityId>& detected_targets,
-                                 float factor) {
-        auto* belief = find(owner);
-        if (belief) {
-            belief->apply_negative_evidence(observer_pos, sensor_range, map,
-                                            detected_targets, factor);
-        }
+            belief->update(s, round);
     }
 
 private:
-    std::map<EntityId, BeliefState> beliefs_;
+    std::map<int, BeliefState> beliefs_;
 };

@@ -64,17 +64,14 @@ jobs:
       - name: Replay diff
         run: |
           scenarios=(
-            default
-            benchmark_dense
-            noisy_perception
-            multi_agent
+            small_office_breach
           )
           status=0
           for name in "${scenarios[@]}"; do
             echo "--- $name ---"
-            ./build/xushi --bench "scenarios/${name}.json"
+            ./build/xushi --quiet "scenarios/${name}.json"
             mv "scenarios/${name}.replay" "run1_${name}.replay"
-            ./build/xushi --bench "scenarios/${name}.json"
+            ./build/xushi --quiet "scenarios/${name}.json"
             if cmp -s "run1_${name}.replay" "scenarios/${name}.replay"; then
               echo "  OK: replays match byte-for-byte"
             else
@@ -145,7 +142,7 @@ jobs:
           status=0
           for f in scenarios/*.json; do
             echo -n "Loading $f ... "
-            if timeout 30 ./build/xushi --bench "$f" > /dev/null 2>&1; then
+            if timeout 30 ./build/xushi --quiet "$f" > /dev/null 2>&1; then
               echo "OK"
             else
               echo "FAIL"
@@ -153,37 +150,3 @@ jobs:
             fi
           done
           exit $status
-
-  # ── Build viewer to catch API drift between core and viewer ───────────
-  viewer-build:
-    runs-on: ubuntu-latest
-    name: viewer
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install raylib build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libasound2-dev libx11-dev libxrandr-dev libxi-dev \
-            libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev \
-            libxinerama-dev libwayland-dev libxkbcommon-dev
-
-      - name: Build raylib from source
-        run: |
-          git clone --depth 1 --branch 5.5 https://github.com/raysan5/raylib.git /tmp/raylib
-          cmake -B /tmp/raylib/build -S /tmp/raylib \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_EXAMPLES=OFF
-          cmake --build /tmp/raylib/build -j "$(nproc)"
-          sudo cmake --install /tmp/raylib/build
-
-      - name: Build xushi (with viewer)
-        run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_FLAGS="-Wall -Wextra -Werror"
-          cmake --build build -j "$(nproc)"
-
-      - name: Verify viewer binary exists
-        run: test -f build/xushi_viewer && echo "xushi_viewer built successfully"

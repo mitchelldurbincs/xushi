@@ -1,132 +1,92 @@
 #include "belief.h"
+
 #include <algorithm>
 
-// Uncertainty growth multiplier applied per negative-evidence observation.
-// When a track is in sensor coverage but not detected, its uncertainty
-// is scaled by this factor (10% growth) to reflect increased doubt.
-static constexpr float kNegativeEvidenceUncertaintyGrowth = 1.1f;
-
-static int popcount32(uint32_t x) {
-    x = x - ((x >> 1) & 0x55555555u);
-    x = (x & 0x33333333u) + ((x >> 2) & 0x33333333u);
-    return static_cast<int>(((x + (x >> 4)) & 0x0F0F0F0Fu) * 0x01010101u >> 24);
-}
-
 Track* BeliefState::find_track(EntityId target) {
-    for (auto& t : tracks) {
+    for (auto& t : tracks)
         if (t.target == target) return &t;
-    }
     return nullptr;
 }
 
 const Track* BeliefState::find_track(EntityId target) const {
-    for (const auto& t : tracks) {
+    for (const auto& t : tracks)
         if (t.target == target) return &t;
-    }
     return nullptr;
 }
 
-void BeliefState::update(const Observation& obs, int current_tick) {
-    Track* existing = find_track(obs.target);
+void BeliefState::update(const Sighting& s, int current_round) {
+    Track* existing = find_track(s.target);
+    uint32_t src_bit = s.is_spoof ? 0u : (1u << (s.observer % 32));
     if (existing) {
-        existing->estimated_position = obs.estimated_position;
-        existing->confidence = obs.confidence;
-        existing->uncertainty = obs.uncertainty;
-        existing->last_update_tick = current_tick;
-        existing->last_decay_tick = current_tick;
+        existing->estimated_position = s.estimated_position;
+        existing->confidence = s.confidence;
+        existing->uncertainty = s.uncertainty;
+        existing->last_update_round = current_round;
+        existing->last_decay_round = current_round;
         existing->status = TrackStatus::FRESH;
-
-        // Identity: keep the stronger classification
-        if (obs.identity_confidence > existing->identity_confidence) {
-            existing->class_id = obs.class_id;
-            existing->identity_confidence = obs.identity_confidence;
-        }
-        // Corroboration: accumulate independent sources
-        existing->source_mask |= (1u << (obs.observer % 32));
-        existing->corroboration_count = popcount32(existing->source_mask);
-    } else {
-        Track t{};
-        t.target = obs.target;
-        t.estimated_position = obs.estimated_position;
-        t.confidence = obs.confidence;
-        t.uncertainty = obs.uncertainty;
-        t.last_update_tick = current_tick;
-        t.last_decay_tick = current_tick;
-        t.status = TrackStatus::FRESH;
-        t.class_id = obs.class_id;
-        t.identity_confidence = obs.identity_confidence;
-        t.source_mask = 1u << (obs.observer % 32);
-        t.corroboration_count = 1;
-        tracks.push_back(t);
+        if (s.class_id != 0)
+            existing->class_id = s.class_id;
+        existing->source_mask |= src_bit;
+        return;
     }
+    Track t{};
+    t.target = s.target;
+    t.estimated_position = s.estimated_position;
+    t.confidence = s.confidence;
+    t.uncertainty = s.uncertainty;
+    t.last_update_round = current_round;
+    t.last_decay_round = current_round;
+    t.status = TrackStatus::FRESH;
+    t.class_id = s.class_id;
+    t.source_mask = src_bit;
+    tracks.push_back(t);
 }
 
-void BeliefState::decay(int current_tick, float dt, const BeliefConfig& config) {
+void BeliefState::decay(int current_round, const BeliefConfig& config) {
     for (auto& t : tracks) {
-        int age = current_tick - t.last_update_tick;
-        int prev_age = t.last_decay_tick - t.last_update_tick;
-        if (current_tick < t.last_decay_tick)
+        int age = current_round - t.last_update_round;
+        int prev_age = t.last_decay_round - t.last_update_round;
+        if (current_round < t.last_decay_round)
             prev_age = age;
 
-        if (age <= config.fresh_ticks) {
+        if (age <= config.fresh_rounds) {
             t.status = TrackStatus::FRESH;
-        } else if (age <= config.fresh_ticks + config.stale_ticks) {
+        } else if (age <= config.fresh_rounds + config.stale_rounds) {
             t.status = TrackStatus::STALE;
-            int stale_start = config.fresh_ticks;
-            int stale_end = config.fresh_ticks + config.stale_ticks;
-            int stale_ticks_elapsed =
+            const int stale_start = config.fresh_rounds;
+            const int stale_end = config.fresh_rounds + config.stale_rounds;
+            int stale_rounds_elapsed =
                 std::max(0, std::min(age, stale_end) - std::max(prev_age, stale_start));
-            float stale_seconds_elapsed = static_cast<float>(stale_ticks_elapsed) * dt;
-            if (stale_seconds_elapsed > 0.0f) {
-                t.confidence = std::max(
-                    0.0f,
-                    t.confidence - config.confidence_decay_per_second * stale_seconds_elapsed);
-                t.identity_confidence = std::max(
-                    0.0f,
-                    t.identity_confidence - config.confidence_decay_per_second * stale_seconds_elapsed);
-                t.uncertainty +=
-                    config.uncertainty_growth_per_second * stale_seconds_elapsed;
+            if (stale_rounds_elapsed > 0) {
+                const float k = static_cast<float>(stale_rounds_elapsed);
+                t.confidence = std::max(0.0f, t.confidence - config.confidence_decay_per_round * k);
+                t.uncertainty += config.uncertainty_growth_per_round * k;
             }
         } else {
             t.status = TrackStatus::EXPIRED;
         }
-        t.last_decay_tick = current_tick;
+        t.last_decay_round = current_round;
     }
-
-    // Remove expired tracks
     tracks.erase(
         std::remove_if(tracks.begin(), tracks.end(),
-            [](const Track& t) { return t.status == TrackStatus::EXPIRED; }),
+                       [](const Track& t) { return t.status == TrackStatus::EXPIRED; }),
         tracks.end());
 }
 
-void BeliefState::apply_negative_evidence(Vec2 observer_pos, float sensor_range,
-                                           const Map& map,
-                                           const std::vector<EntityId>& detected_targets,
-                                           float factor) {
-    for (auto& t : tracks) {
-        // Skip targets that were actually detected this tick
-        bool was_detected = false;
-        for (EntityId id : detected_targets) {
-            if (t.target == id) { was_detected = true; break; }
-        }
-        if (was_detected) continue;
-
-        float dist = (t.estimated_position - observer_pos).length();
-        if (dist > sensor_range) continue;
-        if (!map.line_of_sight(observer_pos, t.estimated_position)) continue;
-
-        // Track was in sensor coverage but not detected — reduce confidence
-        t.confidence *= (1.0f - factor);
-        t.identity_confidence *= (1.0f - factor);
-        t.uncertainty *= kNegativeEvidenceUncertaintyGrowth;
-    }
+void BeliefState::clear_spoofs_in(GridPos center, int radius) {
+    tracks.erase(
+        std::remove_if(tracks.begin(), tracks.end(),
+                       [&](const Track& t) {
+                           return t.source_mask == 0u &&
+                                  chebyshev_distance(t.estimated_position, center) <= radius;
+                       }),
+        tracks.end());
 }
 
 const char* track_status_str(TrackStatus s) {
     switch (s) {
-        case TrackStatus::FRESH: return "FRESH";
-        case TrackStatus::STALE: return "STALE";
+        case TrackStatus::FRESH:   return "FRESH";
+        case TrackStatus::STALE:   return "STALE";
         case TrackStatus::EXPIRED: return "EXPIRED";
     }
     return "???";
