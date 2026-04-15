@@ -272,24 +272,19 @@ static void test_non_asset_damage_ignored(TestContext& ctx) {
 }
 
 int main() {
-    TestContext ctx;
-    std::printf("Running game mode tests...\n");
-
+    return run_test_suite("game mode", [](TestContext& ctx) {
     test_factory_returns_nullptr_when_no_mode(ctx);
     test_factory_returns_asset_protection(ctx);
     test_factory_throws_on_unknown_type(ctx);
     test_no_game_mode_engine_works(ctx);
-
     test_asset_destroyed_triggers_win(ctx);
     test_asset_destroyed_hook_fires(ctx);
     test_time_expiry_healthier_wins(ctx);
     test_time_expiry_draw(ctx);
     test_second_asset_destroyed(ctx);
     test_non_asset_damage_ignored(ctx);
-
     test_asset_init_fails_missing_entity(ctx);
     test_asset_init_fails_no_team(ctx);
     test_team_field_default(ctx);
-
-    return ctx.report_and_exit_code();
+    });
 }

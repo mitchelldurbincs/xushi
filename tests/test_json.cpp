@@ -94,8 +94,7 @@ static void test_defaults(TestContext& ctx) {
 }
 
 int main() {
-    TestContext ctx;
-    std::printf("Running JSON tests...\n");
+    return run_test_suite("JSON", [](TestContext& ctx) {
     test_parse_number(ctx);
     test_number_grammar(ctx);
     test_parse_string(ctx);
@@ -106,5 +105,5 @@ int main() {
     test_empty_containers(ctx);
     test_parse_error(ctx);
     test_defaults(ctx);
-    return ctx.report_and_exit_code();
+    });
 }

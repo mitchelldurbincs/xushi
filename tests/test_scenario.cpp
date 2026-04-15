@@ -13,30 +13,38 @@ static void write_temp_scenario(const char* path, const char* json) {
 }
 
 static void test_load_default(TestContext& ctx) {
-    Scenario s = load_scenario("scenarios/default.json");
-    ctx.check(s.seed == 12345, "seed");
+    Scenario s = load_scenario("scenarios/mvp_contract_2v2.json");
+    ctx.check(s.seed == 20260414, "seed");
     ctx.check(s.dt == 1.0f, "dt");
-    ctx.check(s.ticks == 60, "ticks");
-    ctx.check(std::fabs(s.max_sensor_range - 80.0f) < 0.01f, "max_sensor_range");
+    ctx.check(s.ticks == 40, "ticks");
+    ctx.check(std::fabs(s.max_sensor_range - 90.0f) < 0.01f, "max_sensor_range");
     ctx.check(s.obstacles.size() == 1, "obstacle count");
-    ctx.check(s.obstacles[0].min.x == 45.0f, "obstacle min.x");
-    ctx.check(s.entities.size() == 3, "entity count");
-    ctx.check(s.entities[0].role_name == "drone", "first entity role_name");
-    ctx.check(s.entities[0].can_sense == true, "drone can_sense");
+    ctx.check(s.obstacles[0].min.x == 47.0f, "obstacle min.x");
+    ctx.check(s.entities.size() == 8, "entity count");
+    ctx.check(s.entities[2].role_name == "blue_drone", "first drone role_name");
+    ctx.check(s.entities[2].can_sense == true, "drone can_sense");
     ctx.check(s.entities[0].can_engage == true, "drone can_engage");
-    ctx.check(s.entities[0].ammo == 6, "drone ammo");
+    ctx.check(s.entities[0].ammo == 4, "operator ammo");
     ctx.check(s.entities[0].allowed_effect_profile_indices.size() == 1,
           "drone allowed profile count");
     ctx.check(s.entities[0].allowed_effect_profile_indices[0] == 0,
           "drone allowed profile index");
-    ctx.check(s.entities[2].velocity.x == 1.0f, "target velocity");
+    ctx.check(s.entities[2].velocity.x > 0.0f, "drone velocity");
     ctx.check(s.effect_profiles.size() == 1, "effect profile count");
-    ctx.check(s.effect_profiles[0].name == "standard", "effect profile name");
-    ctx.check(std::fabs(s.effect_profiles[0].range - 60.0f) < 0.01f,
+    ctx.check(s.effect_profiles[0].name == "rifle", "effect profile name");
+    ctx.check(std::fabs(s.effect_profiles[0].range - 35.0f) < 0.01f,
           "effect profile range");
-    ctx.check(s.channel.base_latency_ticks == 3, "channel base_latency");
-    ctx.check(std::fabs(s.channel.loss_probability - 0.1f) < 0.01f, "channel loss");
-    ctx.check(s.belief.fresh_ticks == 5, "belief fresh_ticks");
+    ctx.check(s.channel.base_latency_ticks == 2, "channel base_latency");
+    ctx.check(std::fabs(s.channel.loss_probability - 0.05f) < 0.01f, "channel loss");
+    ctx.check(s.belief.fresh_ticks == 4, "belief fresh_ticks");
+    ctx.check(std::fabs(s.engagement_rules.protected_zone_center.x - 0.0f) < 0.01f,
+          "default protected zone center.x");
+    ctx.check(std::fabs(s.engagement_rules.protected_zone_radius - 10.0f) < 0.01f,
+          "default protected zone radius");
+    ctx.check(std::fabs(s.engagement_rules.friendly_risk_radius - 8.0f) < 0.01f,
+          "default friendly risk radius");
+    ctx.check(std::fabs(s.engagement_rules.min_identity_confidence - 0.5f) < 0.01f,
+          "default min identity confidence");
 }
 
 static void test_load_los_blocked(TestContext& ctx) {
@@ -271,6 +279,45 @@ static void test_invalid_validations(TestContext& ctx) {
     check_invalid_field(ctx, "belief.stale_ticks", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": -1, \"uncertainty_growth\": 0.5, \"confidence_decay\": 0.05}", "belief.stale_ticks must be >= 0, got -1");
     check_invalid_field(ctx, "belief.uncertainty_growth_per_second", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": 10, \"uncertainty_growth\": -0.1, \"confidence_decay\": 0.05}", "belief.uncertainty_growth_per_second must be >= 0, got -0.1");
     check_invalid_field(ctx, "belief.confidence_decay_per_second", "\"belief\": {\"fresh_ticks\": 5, \"stale_ticks\": 10, \"uncertainty_growth\": 0.5, \"confidence_decay\": -0.05}", "belief.confidence_decay_per_second must be >= 0, got -0.05");
+    check_invalid_field(ctx, "engagement_rules.friendly_risk_radius", "\"engagement_rules\": {\"friendly_risk_radius\": -1}", "engagement_rules.friendly_risk_radius must be >= 0, got -1");
+    check_invalid_field(ctx, "engagement_rules.min_identity_confidence", "\"engagement_rules\": {\"min_identity_confidence\": 1.1}", "engagement_rules.min_identity_confidence must be in [0, 1], got 1.1");
+}
+
+static void test_engagement_rule_overrides(TestContext& ctx) {
+    const char* path = "tests/tmp_engagement_rules.json";
+    write_temp_scenario(path,
+        "{"
+        "\"seed\":1,"
+        "\"obstacles\":[],"
+        "\"engagement_rules\":{"
+        "\"protected_zone_center\":[2,3],"
+        "\"protected_zone_radius\":12,"
+        "\"friendly_risk_radius\":4,"
+        "\"default_effect_range\":90,"
+        "\"effect_range_step\":25,"
+        "\"max_track_uncertainty\":11,"
+        "\"min_identity_confidence\":0.7,"
+        "\"min_corroboration_count\":2"
+        "},"
+        "\"entities\":["
+        "{\"id\":0,\"type\":\"drone\",\"pos\":[0,0],\"vel\":[0,0],\"can_sense\":true},"
+        "{\"id\":1,\"type\":\"ground\",\"pos\":[1,0],\"vel\":[0,0],\"can_track\":true},"
+        "{\"id\":2,\"type\":\"target\",\"pos\":[5,5],\"vel\":[0,0],\"is_observable\":true}"
+        "]"
+        "}");
+
+    Scenario s = load_scenario(path);
+    ctx.check(std::fabs(s.engagement_rules.protected_zone_center.x - 2.0f) < 0.01f,
+          "override protected zone center.x");
+    ctx.check(std::fabs(s.engagement_rules.protected_zone_center.y - 3.0f) < 0.01f,
+          "override protected zone center.y");
+    ctx.check(std::fabs(s.engagement_rules.friendly_risk_radius - 4.0f) < 0.01f,
+          "override friendly risk radius");
+    ctx.check(std::fabs(s.engagement_rules.effect_range_step - 25.0f) < 0.01f,
+          "override effect range step");
+    ctx.check(s.engagement_rules.min_corroboration_count == 2,
+          "override min corroboration count");
+    std::remove(path);
 }
 
 static void test_invalid_effect_profile_reference(TestContext& ctx) {
@@ -339,8 +386,7 @@ static void test_invalid_effect_profile_hit_probability(TestContext& ctx) {
 }
 
 int main() {
-    TestContext ctx;
-    std::printf("Running scenario tests...\n");
+    return run_test_suite("scenario", [](TestContext& ctx) {
     test_load_default(ctx);
     test_load_los_blocked(ctx);
     test_missing_file(ctx);
@@ -351,8 +397,9 @@ int main() {
     test_missing_capabilities_rejected(ctx);
     test_duplicate_entity_ids_rejected(ctx);
     test_belief_rate_units_per_second_keys(ctx);
+    test_engagement_rule_overrides(ctx);
     test_invalid_validations(ctx);
     test_invalid_effect_profile_reference(ctx);
     test_invalid_effect_profile_hit_probability(ctx);
-    return ctx.report_and_exit_code();
+    });
 }

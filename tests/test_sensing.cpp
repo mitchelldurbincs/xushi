@@ -101,8 +101,7 @@ static void test_class_confusion_never_confuses_at_rate_0(TestContext& ctx) {
 }
 
 int main() {
-    TestContext ctx;
-    std::printf("Running sensing tests...\n");
+    return run_test_suite("sensing", [](TestContext& ctx) {
     test_blocked_los_no_detection(ctx);
     test_out_of_range_no_detection(ctx);
     test_clear_los_in_range_detects(ctx);
@@ -112,5 +111,5 @@ int main() {
     test_class_id_carried_through(ctx);
     test_class_confusion_always_confuses_at_rate_1(ctx);
     test_class_confusion_never_confuses_at_rate_0(ctx);
-    return ctx.report_and_exit_code();
+    });
 }

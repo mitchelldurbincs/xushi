@@ -86,6 +86,31 @@ void parse_top_level_config(const JsonValue& root, Scenario& s) {
         s.perception.class_confusion_rate = static_cast<float>(p.number_or("class_confusion_rate", 0.0));
     }
 
+    if (root.has("engagement_rules")) {
+        const auto& er = root["engagement_rules"];
+        if (er.has("protected_zone_center")) {
+            const auto& center = er["protected_zone_center"].as_array();
+            s.engagement_rules.protected_zone_center = {
+                static_cast<float>(center[0].as_number()),
+                static_cast<float>(center[1].as_number())
+            };
+        }
+        s.engagement_rules.protected_zone_radius = static_cast<float>(
+            er.number_or("protected_zone_radius", s.engagement_rules.protected_zone_radius));
+        s.engagement_rules.friendly_risk_radius = static_cast<float>(
+            er.number_or("friendly_risk_radius", s.engagement_rules.friendly_risk_radius));
+        s.engagement_rules.default_effect_range = static_cast<float>(
+            er.number_or("default_effect_range", s.engagement_rules.default_effect_range));
+        s.engagement_rules.effect_range_step = static_cast<float>(
+            er.number_or("effect_range_step", s.engagement_rules.effect_range_step));
+        s.engagement_rules.max_track_uncertainty = static_cast<float>(
+            er.number_or("max_track_uncertainty", s.engagement_rules.max_track_uncertainty));
+        s.engagement_rules.min_identity_confidence = static_cast<float>(
+            er.number_or("min_identity_confidence", s.engagement_rules.min_identity_confidence));
+        s.engagement_rules.min_corroboration_count = er.int_or(
+            "min_corroboration_count", s.engagement_rules.min_corroboration_count);
+    }
+
     if (root.has("game_mode")) {
         const auto& gm = root["game_mode"];
         s.game_mode_config.type = gm["type"].as_string();
@@ -278,6 +303,24 @@ void validate_scenario(const std::string& path, const Scenario& s) {
     validate_non_negative(path, "perception.miss_rate", s.perception.miss_rate);
     validate_non_negative(path, "perception.false_positive_rate", s.perception.false_positive_rate);
     validate_non_negative(path, "perception.class_confusion_rate", s.perception.class_confusion_rate);
+    validate_non_negative(path, "engagement_rules.protected_zone_radius",
+                          s.engagement_rules.protected_zone_radius);
+    validate_non_negative(path, "engagement_rules.friendly_risk_radius",
+                          s.engagement_rules.friendly_risk_radius);
+    validate_non_negative(path, "engagement_rules.default_effect_range",
+                          s.engagement_rules.default_effect_range);
+    validate_non_negative(path, "engagement_rules.effect_range_step",
+                          s.engagement_rules.effect_range_step);
+    validate_non_negative(path, "engagement_rules.max_track_uncertainty",
+                          s.engagement_rules.max_track_uncertainty);
+    validate_non_negative(path, "engagement_rules.min_corroboration_count",
+                          s.engagement_rules.min_corroboration_count);
+    if (s.engagement_rules.min_identity_confidence < 0.0f ||
+        s.engagement_rules.min_identity_confidence > 1.0f) {
+        throw make_field_error(path, "engagement_rules.min_identity_confidence",
+                               "must be in [0, 1], got " +
+                                   to_string_value(s.engagement_rules.min_identity_confidence));
+    }
 
     for (size_t i = 0; i < s.effect_profiles.size(); ++i) {
         const auto& p = s.effect_profiles[i];

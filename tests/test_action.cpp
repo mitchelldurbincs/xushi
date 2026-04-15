@@ -310,8 +310,7 @@ static void test_action_result_echoes_request(TestContext& ctx) {
 }
 
 int main() {
-    TestContext ctx;
-    std::printf("Running action tests...\n");
+    return run_test_suite("action", [](TestContext& ctx) {
     test_designate_accepted_when_track_exists(ctx);
     test_designate_rejected_track_not_found(ctx);
     test_engage_rejected_no_capability(ctx);
@@ -321,5 +320,5 @@ int main() {
     test_clear_nonexistent_designation_rejected(ctx);
     test_multiple_actions_per_tick(ctx);
     test_action_result_echoes_request(ctx);
-    return ctx.report_and_exit_code();
+    });
 }

@@ -26,6 +26,8 @@ void viewer_update(ViewerState& vs) {
         vs.show_waypoint_paths = !vs.show_waypoint_paths;
     if (IsKeyPressed(KEY_D))
         vs.show_designations = !vs.show_designations;
+    if (IsKeyPressed(KEY_T))
+        vs.show_track_status_strip = !vs.show_track_status_strip;
 
     // Zoom
     float wheel = GetMouseWheelMove();
