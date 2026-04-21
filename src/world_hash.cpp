@@ -31,6 +31,8 @@ uint64_t compute_world_hash_canonical(const std::vector<ScenarioEntity>& entitie
         mix_int(static_cast<int>(e.kind));
         mix_int(e.team);
         mix_int(e.drone_battery);
+        mix_int(e.overwatch_active ? 1 : 0);
+        mix_int(e.drone_deployed ? 1 : 0);
     }
 
     for (const auto& [team, belief] : beliefs) {

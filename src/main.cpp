@@ -34,6 +34,31 @@ struct CliHooks : RoundHooks {
         if (replay) replay->log(replay_track_expired(round, team, target));
     }
 
+    void on_unit_moved(int round, EntityId actor, GridPos from, GridPos to,
+                       int ap_after) override {
+        if (replay) replay->log(replay_unit_moved(round, actor, from, to, ap_after));
+    }
+
+    void on_shot_resolved(int round, EntityId shooter, EntityId target,
+                          const ShotModifiers& m) override {
+        if (replay) replay->log(replay_shot_resolved(round, shooter, target, m));
+    }
+
+    void on_damage(int round, EntityId shooter, EntityId target,
+                   int damage, int hp_after, bool eliminated) override {
+        if (replay)
+            replay->log(replay_damage(round, shooter, target, damage, hp_after, eliminated));
+    }
+
+    void on_overwatch_set(int round, EntityId actor) override {
+        if (replay) replay->log(replay_overwatch_set(round, actor));
+    }
+
+    void on_door_state_changed(int round, GridPos a, GridPos b,
+                               DoorState new_state, const char* cause) override {
+        if (replay) replay->log(replay_door_state(round, a, b, new_state, cause));
+    }
+
     void on_world_hash(int round, uint64_t hash) override {
         if (replay) replay->log(replay_world_hash(round, hash));
     }
