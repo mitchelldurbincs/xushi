@@ -1,4 +1,5 @@
 #include "test_helpers.h"
+#include "../src/action.h"
 #include "../src/replay.h"
 #include "../src/replay_events.h"
 #include "../src/scenario.h"
@@ -93,12 +94,12 @@ static void test_initiative_alternates_by_round(TestContext& ctx) {
 
     engine.begin_round(0, hooks);
     const int first = engine.round_state().initiative_team;
-    while (!engine.step_activation(0, hooks)) {}
+    while (!engine.step_activation(0, hooks, ActionRequest::end_turn())) {}
     engine.finalize_round(0, hooks);
 
     engine.begin_round(1, hooks);
     const int second = engine.round_state().initiative_team;
-    while (!engine.step_activation(1, hooks)) {}
+    while (!engine.step_activation(1, hooks, ActionRequest::end_turn())) {}
     engine.finalize_round(1, hooks);
 
     ctx.check(first == 0, "round 0 initiative is team 0");
@@ -165,11 +166,9 @@ static void test_deterministic_replay_checksums(TestContext& ctx) {
 
     scn.seed += 1;
     uint64_t c = run_replay_checksum(scn, c_path);
-    // World hash depends only on entity + belief state, which currently
-    // doesn't diverge by seed (no stochastic actions yet). This test merely
-    // asserts the infrastructure hashes deterministically — the
-    // "different seed differs" expectation will bite once we wire
-    // stochastic actions.
+    // With run_round using default EndTurn actions, no RNG is consumed, so
+    // different seeds still produce the same hash. The seed-divergence-on-
+    // shot guarantee is covered in tests/test_action.cpp.
     (void)c;
 
     std::remove(a_path.c_str());

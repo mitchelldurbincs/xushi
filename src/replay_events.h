@@ -82,3 +82,83 @@ inline JsonValue replay_game_mode_end(int round, const GameModeResult& r) {
         {"reason",        json_string(r.reason)},
     });
 }
+
+// Action / resolution events (contract §4, §7). Percent-points are integers
+// per §14 (float values are inputs to compute_hit_probability only; anything
+// that enters replay or world_hash stays integer).
+
+inline JsonValue replay_unit_moved(int round, EntityId actor,
+                                   GridPos from, GridPos to, int ap_after) {
+    return json_object({
+        {"type",     json_string("unit_moved")},
+        {"round",    json_number(round)},
+        {"actor",    json_number(actor)},
+        {"from",     json_array({json_number(from.x), json_number(from.y)})},
+        {"to",       json_array({json_number(to.x),   json_number(to.y)})},
+        {"ap_after", json_number(ap_after)},
+    });
+}
+
+struct ShotModifiers {
+    int base_pct = 0;
+    int fresh_delta = 0;
+    int cover_delta = 0;
+    int stale_delta = 0;
+    int overwatch_delta = 0;
+    int moved_delta = 0;
+    int final_pct = 0;
+    int rolled_pct = 0;
+    bool hit = false;
+};
+
+inline JsonValue replay_shot_resolved(int round, EntityId shooter, EntityId target,
+                                      const ShotModifiers& m) {
+    return json_object({
+        {"type",            json_string("shot_resolved")},
+        {"round",           json_number(round)},
+        {"shooter",         json_number(shooter)},
+        {"target",          json_number(target)},
+        {"base_pct",        json_number(m.base_pct)},
+        {"fresh_delta",     json_number(m.fresh_delta)},
+        {"cover_delta",     json_number(m.cover_delta)},
+        {"stale_delta",     json_number(m.stale_delta)},
+        {"overwatch_delta", json_number(m.overwatch_delta)},
+        {"moved_delta",     json_number(m.moved_delta)},
+        {"final_pct",       json_number(m.final_pct)},
+        {"rolled_pct",      json_number(m.rolled_pct)},
+        {"hit",             json_number(m.hit ? 1 : 0)},
+    });
+}
+
+inline JsonValue replay_damage(int round, EntityId shooter, EntityId target,
+                               int damage, int hp_after, bool eliminated) {
+    return json_object({
+        {"type",       json_string("damage")},
+        {"round",      json_number(round)},
+        {"shooter",    json_number(shooter)},
+        {"target",     json_number(target)},
+        {"damage",     json_number(damage)},
+        {"hp_after",   json_number(hp_after)},
+        {"eliminated", json_number(eliminated ? 1 : 0)},
+    });
+}
+
+inline JsonValue replay_overwatch_set(int round, EntityId actor) {
+    return json_object({
+        {"type",  json_string("overwatch_set")},
+        {"round", json_number(round)},
+        {"actor", json_number(actor)},
+    });
+}
+
+inline JsonValue replay_door_state(int round, GridPos a, GridPos b,
+                                   DoorState new_state, const char* cause) {
+    return json_object({
+        {"type",      json_string("door_state")},
+        {"round",     json_number(round)},
+        {"a",         json_array({json_number(a.x), json_number(a.y)})},
+        {"b",         json_array({json_number(b.x), json_number(b.y)})},
+        {"new_state", json_string(door_state_str(new_state))},
+        {"cause",     json_string(cause)},
+    });
+}
