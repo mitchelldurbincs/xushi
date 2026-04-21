@@ -426,7 +426,10 @@ bool SimEngine::step_activation(int round, RoundHooks& hooks,
     require_phase(RoundPhase::Activations);
 
     // Prime (or re-prime after a completed activation) to the next live actor.
-    if (!activation_state_.started || activation_state_.actor == 0)
+    // Note: don't gate on `activation_state_.actor == 0` — entity ID 0 is a
+    // valid actor (attacker_a in the canonical scenario). `started` is the
+    // sole "is primed" indicator; it's reset to false at end-of-activation.
+    if (!activation_state_.started)
         advance_to_next_activation();
 
     if (round_context_.activation_cursor >= round_context_.activation_order.size()) {

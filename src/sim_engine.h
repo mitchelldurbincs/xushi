@@ -124,6 +124,7 @@ public:
     const std::vector<ScenarioEntity>& get_entities() const { return entities_; }
     std::vector<ScenarioEntity>& entities() { return entities_; }
     const std::map<int, BeliefState>& get_beliefs() const { return beliefs_.states(); }
+    BeliefStateStore& beliefs() { return beliefs_; }
     const GridMap& grid() const { return grid_; }
     const CommSystem& comms() const { return comms_; }
 
