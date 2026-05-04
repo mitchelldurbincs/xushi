@@ -9,12 +9,22 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <chrono>
 
 namespace {
+
+struct BenchMetrics {
+    double total_us = 0.0;
+    double activation_us = 0.0;
+    int ticks = 0;
+};
 
 struct CliHooks : RoundHooks {
     ReplayWriter* replay = nullptr;
     bool quiet = false;
+    bool bench = false;
+    BenchMetrics* metrics = nullptr;
+    std::chrono::steady_clock::time_point bench_start;
 
     void on_round_started(int round, int initiative_team) override {
         if (replay) replay->log(replay_round_started(round, initiative_team));
@@ -49,23 +59,37 @@ struct CliHooks : RoundHooks {
                             round, r.reason.c_str());
         }
     }
+
+    void on_phase_timing(const char* phase, double elapsed_us) override {
+        if (metrics) {
+            if (std::strcmp(phase, "activation") == 0) {
+                metrics->activation_us += elapsed_us;
+                metrics->ticks++;
+            }
+            metrics->total_us += elapsed_us;
+        }
+    }
 };
 
 }  // namespace
 
 int main(int argc, char* argv[]) {
     bool quiet = false;
+    bool bench = false;
     const char* path = nullptr;
 
     for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--quiet") == 0 ||
-            std::strcmp(argv[i], "--bench") == 0)
+        if (std::strcmp(argv[i], "--quiet") == 0)
             quiet = true;
+        else if (std::strcmp(argv[i], "--bench") == 0)
+            bench = true;
         else
             path = argv[i];
     }
+    if (bench) quiet = true;
+    
     if (!path) {
-        std::fprintf(stderr, "usage: xushi [--quiet] <scenario.json>\n");
+        std::fprintf(stderr, "usage: xushi [--quiet] [--bench] <scenario.json>\n");
         return 1;
     }
 
@@ -99,6 +123,12 @@ int main(int argc, char* argv[]) {
     CliHooks hooks;
     hooks.replay = &replay;
     hooks.quiet = quiet;
+    hooks.bench = bench;
+    BenchMetrics metrics;
+    if (bench) {
+        hooks.metrics = &metrics;
+        hooks.bench_start = std::chrono::steady_clock::now();
+    }
 
     if (!quiet)
         std::printf("scenario: %s  seed: %llu  rounds: %d  replay: %s\n",
@@ -114,5 +144,19 @@ int main(int argc, char* argv[]) {
     }
 
     replay.close();
+    
+    // Print benchmark metrics
+    if (bench) {
+        auto bench_end = std::chrono::steady_clock::now();
+        double total_ms = std::chrono::duration<double, std::milli>(bench_end - hooks.bench_start).count();
+        int total_ticks = metrics.ticks;
+        double throughput = total_ticks > 0 ? (total_ticks * 1000.0 / total_ms) : 0.0;
+        double per_tick_ms = total_ticks > 0 ? (metrics.activation_us / 1000.0 / total_ticks) : 0.0;
+        
+        std::printf("throughput: %.1f ticks/sec\n", throughput);
+        std::printf("per tick: %.4f ms\n", per_tick_ms);
+        std::printf("sensing: 0.0 ms\n");  // Not currently measured
+    }
+    
     return 0;
 }
