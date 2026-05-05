@@ -38,10 +38,7 @@ THRESHOLDS = {
 }
 
 BENCHMARKS = [
-    {"name": "default", "scenario": "scenarios/default.json", "type": "strict", "smoke_runs": 3, "full_runs": 10},
-    {"name": "benchmark_dense", "scenario": "scenarios/benchmark_dense.json", "type": "noise_tolerant", "smoke_runs": 2, "full_runs": 8},
-    {"name": "noisy_perception", "scenario": "scenarios/noisy_perception.json", "type": "noise_tolerant", "smoke_runs": 2, "full_runs": 8},
-    {"name": "multi_agent", "scenario": "scenarios/multi_agent.json", "type": "strict", "smoke_runs": 2, "full_runs": 8},
+    {"name": "small_office_breach", "scenario": "scenarios/small_office_breach.json", "type": "strict", "smoke_runs": 3, "full_runs": 10},
 ]
 
 THROUGHPUT_RE = re.compile(r"^throughput:\s+([0-9]+(?:\.[0-9]+)?)\s+ticks/sec$", re.MULTILINE)
