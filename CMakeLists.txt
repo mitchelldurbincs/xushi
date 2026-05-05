@@ -45,4 +45,7 @@ set_tests_properties(scenario PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 add_xushi_test(contract  tests/test_contract.cpp)
 set_tests_properties(contract PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+add_xushi_test(action    tests/test_action.cpp)
+set_tests_properties(action PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 add_xushi_test(game_mode tests/test_game_mode.cpp)

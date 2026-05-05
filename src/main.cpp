@@ -9,12 +9,22 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <chrono>
 
 namespace {
+
+struct BenchMetrics {
+    double total_us = 0.0;
+    double activation_us = 0.0;
+    int ticks = 0;
+};
 
 struct CliHooks : RoundHooks {
     ReplayWriter* replay = nullptr;
     bool quiet = false;
+    bool bench = false;
+    BenchMetrics* metrics = nullptr;
+    std::chrono::steady_clock::time_point bench_start;
 
     void on_round_started(int round, int initiative_team) override {
         if (replay) replay->log(replay_round_started(round, initiative_team));
@@ -34,6 +44,31 @@ struct CliHooks : RoundHooks {
         if (replay) replay->log(replay_track_expired(round, team, target));
     }
 
+    void on_unit_moved(int round, EntityId actor, GridPos from, GridPos to,
+                       int ap_after) override {
+        if (replay) replay->log(replay_unit_moved(round, actor, from, to, ap_after));
+    }
+
+    void on_shot_resolved(int round, EntityId shooter, EntityId target,
+                          const ShotModifiers& m) override {
+        if (replay) replay->log(replay_shot_resolved(round, shooter, target, m));
+    }
+
+    void on_damage(int round, EntityId shooter, EntityId target,
+                   int damage, int hp_after, bool eliminated) override {
+        if (replay)
+            replay->log(replay_damage(round, shooter, target, damage, hp_after, eliminated));
+    }
+
+    void on_overwatch_set(int round, EntityId actor) override {
+        if (replay) replay->log(replay_overwatch_set(round, actor));
+    }
+
+    void on_door_state_changed(int round, GridPos a, GridPos b,
+                               DoorState new_state, const char* cause) override {
+        if (replay) replay->log(replay_door_state(round, a, b, new_state, cause));
+    }
+
     void on_world_hash(int round, uint64_t hash) override {
         if (replay) replay->log(replay_world_hash(round, hash));
     }
@@ -49,23 +84,37 @@ struct CliHooks : RoundHooks {
                             round, r.reason.c_str());
         }
     }
+
+    void on_phase_timing(const char* phase, double elapsed_us) override {
+        if (metrics) {
+            if (std::strcmp(phase, "activation") == 0) {
+                metrics->activation_us += elapsed_us;
+                metrics->ticks++;
+            }
+            metrics->total_us += elapsed_us;
+        }
+    }
 };
 
 }  // namespace
 
 int main(int argc, char* argv[]) {
     bool quiet = false;
+    bool bench = false;
     const char* path = nullptr;
 
     for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--quiet") == 0 ||
-            std::strcmp(argv[i], "--bench") == 0)
+        if (std::strcmp(argv[i], "--quiet") == 0)
             quiet = true;
+        else if (std::strcmp(argv[i], "--bench") == 0)
+            bench = true;
         else
             path = argv[i];
     }
+    if (bench) quiet = true;
+    
     if (!path) {
-        std::fprintf(stderr, "usage: xushi [--quiet] <scenario.json>\n");
+        std::fprintf(stderr, "usage: xushi [--quiet] [--bench] <scenario.json>\n");
         return 1;
     }
 
@@ -99,6 +148,12 @@ int main(int argc, char* argv[]) {
     CliHooks hooks;
     hooks.replay = &replay;
     hooks.quiet = quiet;
+    hooks.bench = bench;
+    BenchMetrics metrics;
+    if (bench) {
+        hooks.metrics = &metrics;
+        hooks.bench_start = std::chrono::steady_clock::now();
+    }
 
     if (!quiet)
         std::printf("scenario: %s  seed: %llu  rounds: %d  replay: %s\n",
@@ -114,5 +169,19 @@ int main(int argc, char* argv[]) {
     }
 
     replay.close();
+    
+    // Print benchmark metrics
+    if (bench) {
+        auto bench_end = std::chrono::steady_clock::now();
+        double total_ms = std::chrono::duration<double, std::milli>(bench_end - hooks.bench_start).count();
+        int total_ticks = metrics.ticks;
+        double throughput = total_ticks > 0 ? (total_ticks * 1000.0 / total_ms) : 0.0;
+        double per_tick_ms = total_ticks > 0 ? (metrics.activation_us / 1000.0 / total_ticks) : 0.0;
+        
+        std::printf("throughput: %.1f ticks/sec\n", throughput);
+        std::printf("per tick: %.4f ms\n", per_tick_ms);
+        std::printf("sensing: 0.0 ms\n");  // Not currently measured
+    }
+    
     return 0;
 }

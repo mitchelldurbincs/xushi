@@ -40,6 +40,10 @@ struct ScenarioEntity {
     int drone_vision_range = 6;
     int drone_move_range = 3;
     bool drone_deployed = false;   // operators carry their team drone until deployed
+
+    // Operator-only (contract §7). Persists across activations within a round
+    // until consumed by a trigger or the operator's next activation.
+    bool overwatch_active = false;
 };
 
 // Device objects on the map (contract §3).
